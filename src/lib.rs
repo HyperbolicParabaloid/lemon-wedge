@@ -3,6 +3,7 @@ use std::sync::mpsc;
 pub mod graphics_engine;
 pub mod ui;
 pub mod vao;
+pub mod ssbo;
 pub mod vbo;
 pub mod ebo;
 pub mod shader;
@@ -45,11 +46,13 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut ui_elements = ui::UI::new();
     ui_elements.init_shader("src/shaders/ui.vert", "src/shaders/ui.frag")?;
+
     ui_elements.push_textblock(
         ui::text::TextBlock::from(String::from(""),
         glm::Vec4::new(1.0, 1.0, 1.0, 1.0)),
-        ui::TextBlockPosition::new(glm::Vec3::new(0.1, 0.1, -0.1), glm::UVec2::new(10, 10), glm::Vec2::new(0.1, 0.1)));
+        ui::TextBlockPosition::new([-0.8, 0.8, -1.0], [32, 32], [0.05, 0.05]));
     ui_elements.reset_vao();
+    ui_elements.gen_ssbo();
 
 	// Enables the Depth Buffer and does backface culling.
     unsafe {
@@ -62,11 +65,14 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
        	gl::FrontFace(gl::CCW);
     }
 
+
     while !window.should_close() {
         unsafe {
             // gl::ClearColor(0.3, 0.5, 0.3, 1.0);
             gl::ClearColor(0.22, 0.2, 0.2, 1.0);
             gl::Clear(gl::COLOR_BUFFER_BIT);
+
+
         }
 
         if frag_handler.was_modified()? || vert_handler.was_modified()? {

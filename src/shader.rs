@@ -33,7 +33,11 @@ impl<'a> Shader<'a> {
 			// Linking the program, which tethers the shaders together.
 			gl::LinkProgram(id);
 
-			Self::compile_errors(id, "PROGRAM");
+			// Self::compile_errors(id, "PROGRAM");
+        	let error = gl::GetError();
+        	if error != gl::NO_ERROR {
+        	    panic!("HERE 4 {}", error);
+        	}
 
 			// Cleaning up the shaders.
 			gl::DeleteShader(vertex_shader);

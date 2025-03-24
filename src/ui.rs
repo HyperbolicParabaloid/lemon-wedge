@@ -4,6 +4,7 @@ use glfw::ffi::glfwGetTime;
 use glfw::Modifiers;
 
 use crate::shader::Shader;
+use crate::ssbo::SSBO;
 use crate::vao::VAO;
 use crate::vbo::VBO;
 
@@ -195,14 +196,21 @@ pub struct CharVertex {
 }
 
 // This will be used in the SSBO.
-#[allow(unused)]
+#[derive(Debug)]
+#[repr(C)]
 pub struct TextBlockPosition {
-    position: glm::Vec3,
-    dimensions: glm::UVec2,
-    step_size: glm::Vec2,
+    // position: glm::Vec3,
+    // dimensions: glm::UVec2,
+    // step_size: glm::Vec2,
+    position: [f32; 3],
+    dimensions: [u32; 2],
+    step_size: [f32; 2],
 }
 impl TextBlockPosition {
-    pub fn new(position: glm::Vec3, dimensions: glm::UVec2, step_size: glm::Vec2) -> Self {
+    // pub fn new(position: glm::Vec3, dimensions: glm::UVec2, step_size: glm::Vec2) -> Self {
+        // TextBlockPosition { position, dimensions, step_size }
+    // }
+    pub fn new(position: [f32; 3], dimensions: [u32; 2], step_size: [f32; 2]) -> Self {
         TextBlockPosition { position, dimensions, step_size }
     }
 }
@@ -230,6 +238,7 @@ pub struct UI<'a> {
     chars_vec: Vec<CharVertex>, // Buffer we're going to send to the GPU.
     shader_program: Option<Shader<'a>>,
     vao: Option<VAO>,
+    ssbo: Option<SSBO>,
     uniforms: Vec<gl::types::GLint>,
     cursor_pos: CursorPos,
     cursor_char: char,
@@ -255,6 +264,7 @@ impl<'a> UI<'a> {
             chars_vec: Vec::new(),
             shader_program: None,
             vao: None,
+            ssbo: None,
             cursor_pos: CursorPos::END(vertical_offset),
             cursor_char: '_',
             uniforms: Vec::new(),
@@ -264,6 +274,22 @@ impl<'a> UI<'a> {
 
         default_ui.reset_vao();
         default_ui
+    }
+
+    // Creates new SSBO.
+    pub fn gen_ssbo(&mut self) {
+        if let Some(ssbo) = &self.ssbo {
+            ssbo.delete();
+        }
+        // let test_vec: Vec<f32> = vec![0.1];
+        // self.ssbo = Some(SSBO::try_new(&test_vec, gl::DYNAMIC_DRAW));
+        if let (Some(vao), Some(shader_program)) = (&self.vao, &self.shader_program) {
+            vao.bind();
+            shader_program.activate();
+            println!("{:?}", self.positions);
+            self.ssbo = Some(SSBO::try_new(&self.positions, gl::DYNAMIC_DRAW));
+            vao.unbind();
+        }
     }
 
     // Creates a new shader program if one doesn't already exist.
@@ -345,15 +371,17 @@ impl<'a> UI<'a> {
 
     // Renders all the Characters to the window.
     pub fn draw(&self) {
-        if let (Some(vao), Some(shader_program)) = (&self.vao, &self.shader_program) {
+        if let (Some(vao), Some(ssbo), Some(shader_program)) = (&self.vao, &self.ssbo, &self.shader_program) {
             shader_program.activate();
             vao.bind();
+            // ssbo.bind();
             unsafe {
                 /* The Cursor's gl_InstanceID u32   */ gl::Uniform1ui(self.uniforms[0], self.chars_vec.len() as u32 - 1);
                 /* The glfwGetTime                  */ gl::Uniform1f(self.uniforms[1], glfwGetTime() as gl::types::GLfloat);
                 gl::DrawArraysInstanced(gl::TRIANGLE_STRIP, 0, 4, self.chars_vec.len() as gl::types::GLsizei);
             }
             vao.unbind();
+            // ssbo.unbind();
         } else {
             eprintln!("You cannot draw an UI element that doesn't have a shader program.\nPerhaps you forgot to do: ui.init_shader(vert_file, frag_file)")
         }
@@ -391,7 +419,7 @@ impl<'a> UI<'a> {
     //          >_
     //          >hi_
     fn move_cursor_from_to(&mut self, from: (usize, f32), to: (usize, f32)) {
-
+        todo!("Nuffin yet")
     }
 
     // Handles the cursor movement if the user presses an arrow key.
@@ -445,6 +473,9 @@ impl<'a> UI<'a> {
             shader_program.activate();
             vao.bind();
             
+            // let test_vec: Vec<f32> = vec![10.0];
+            // let ssbo = SSBO::try_new(&test_vec, gl::STATIC_DRAW);
+
             let quad_vbo = VBO::try_new(&QUAD.to_vec(), gl::STATIC_DRAW);
             let chars_vbo = VBO::try_new(&self.chars_vec, gl::STATIC_DRAW);
 

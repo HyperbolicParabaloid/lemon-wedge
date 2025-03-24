@@ -15,6 +15,9 @@ impl Window {
             process::exit(-2)
         }).unwrap();
 
+        glfw.window_hint(glfw::WindowHint::ContextVersion(4, 5));
+        glfw.window_hint(glfw::WindowHint::OpenGlProfile(glfw::OpenGlProfileHint::Core));
+
         // New window and event reciever.
         let (mut window, events)
             = glfw
