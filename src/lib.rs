@@ -50,7 +50,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     ui_elements.push_textblock(
         ui::text::TextBlock::from(String::from(""),
         glm::Vec4::new(1.0, 1.0, 1.0, 1.0)),
-        ui::TextBlockPosition::new([-0.8, 0.8, -1.0], [32, 32], [0.05, 0.05]));
+        ui::TextBlockPosition::new(glm::Vec3::new(-0.8, 0.8, -1.0), [32, 32], [1000, 1000], [0, 0]));
     ui_elements.reset_vao();
     ui_elements.gen_ssbo();
 

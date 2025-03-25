@@ -17,19 +17,26 @@ layout (location = 4) in float aIndex;
 // SSBO index.
 layout (location = 5) in uint aSSBOIndex;
 
+uvec2 u32_to_two_u16s(uint combined_val) {
+    uint right_val = 65535 & combined_val;
+    uint left_val = (4294901760 & combined_val) >> 16;
+	return uvec2(left_val, right_val);
+}
+
 // For each character:
-// struct TextBlock {
-//     vec3 block_position;
-// 	uvec2 block_dimensions;
-// 	vec2 block_step_size;
-// };
+struct TextBlock {
+
+    vec3 position;		// This one should be obvious, just postion in 3D space.
+    uint dimensions;    // This is actually a "packed" value, two u16's representing the max X and Y chars that are drawn.
+    uint step_size;     // Another "packed" value representing the horizontal and vertical separation between chars.
+                        // The u16's they break out into, represent the 100th of a % step difference, based on the size of the chars.
+                        // That means, if we have the horizontal being 10000, we want the space between each char, to be (100 * 100) / 10000 * char size.
+    uint char_size;     // Packed val representing the font size of the chars width and height.
+};
 
 // SSBO containing character positions and data
 layout(std430, binding = 0) buffer TextBlocksBuffer {
-    vec3 block_position;
-	uvec2 block_dimensions;
-	vec2 block_step_size;
-	// TextBlock positions[];
+	TextBlock positions[];
 	// float test_position[];
 };
 
@@ -77,6 +84,18 @@ void main() {
 	// */
 
 	///*
+
+
+// vec3 block_position = vec3(-0.8, 0.8, -1.0);
+// uvec2 block_dimensions = uvec2(32, 32);
+// vec2 block_step_size = vec2(0.05);
+
+	vec3 block_position = positions[aSSBOIndex].position;
+	uvec2 block_dimensions = u32_to_two_u16s(positions[aSSBOIndex].dimensions);
+	uvec2 uvec_steps = u32_to_two_u16s(positions[aSSBOIndex].step_size);
+	vec2 block_step_size = vec2(uvec_steps) / 1000.0 * 0.05;
+	// uvec2 chars = u32_to_two_u16s(positions[aSSBOIndex].char_size);
+
 	// This is for sinking stuff like lowercase g's and y's so they look right.
 	float fraction = (1.f + fract(aIndex) - 0.5) * block_step_size.y;
 	float wholeIndex = aIndex - fract(aIndex);
@@ -90,7 +109,7 @@ void main() {
 
 	// sending out the changes.
 	// color = aColor * ((gl_InstanceID == cursor_index && fract(time) < 0.5) ? 0.f : 1.f);
-	color = aColor * ((gl_InstanceID == cursor_index && fract(time) < block_step_size.y) ? 0.f : 1.f);
+	color = aColor * ((gl_InstanceID == cursor_index && fract(time) < 0.5) ? 0.f : 1.f);
 	letter1 = aLetter1;
 	letter2 = aLetter2;
 	quadCoord = vec2( -aPos.x,  aPos.y);

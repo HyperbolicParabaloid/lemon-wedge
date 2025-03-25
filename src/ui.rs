@@ -199,20 +199,37 @@ pub struct CharVertex {
 #[derive(Debug)]
 #[repr(C)]
 pub struct TextBlockPosition {
-    // position: glm::Vec3,
-    // dimensions: glm::UVec2,
-    // step_size: glm::Vec2,
-    position: [f32; 3],
-    dimensions: [u32; 2],
-    step_size: [f32; 2],
+    position: glm::Vec3,// This one should be obvious, just postion in 3D space.
+    dimensions: u32,    // This is actually a "packed" value, two u16's representing the max X and Y chars that are drawn.
+    step_size: u32,     // Another "packed" value representing the horizontal and vertical separation between chars.
+                        // The u16's they break out into, represent the 100th of a % step difference, based on the size of the chars.
+                        // That means, if we have the horizontal being 10000, we want the space between each char, to be (100 * 100) / 10000 * char size.
+    char_size: u32,     // Packed val representing the font size of the chars width and height.
 }
 impl TextBlockPosition {
     // pub fn new(position: glm::Vec3, dimensions: glm::UVec2, step_size: glm::Vec2) -> Self {
         // TextBlockPosition { position, dimensions, step_size }
     // }
-    pub fn new(position: [f32; 3], dimensions: [u32; 2], step_size: [f32; 2]) -> Self {
-        TextBlockPosition { position, dimensions, step_size }
+    pub fn new(position: glm::Vec3, dimensions: [u16; 2], step_size: [u16; 2], char_size: [u16; 2]) -> Self {
+
+        let dimensions = two_u16_to_u32(dimensions[0], dimensions[1]);
+        let step_size = two_u16_to_u32(step_size[0], step_size[1]);
+        let char_size = two_u16_to_u32(char_size[0], char_size[1]);
+
+        TextBlockPosition { position, dimensions, step_size, char_size }
     }
+}
+
+fn two_u16_to_u32(left_val: u16, right_val: u16) -> u32 {
+    (!0 as u32 & (left_val as u32) << 16) + right_val as u32
+}
+
+#[allow(unused)]
+fn u32_to_two_u16s(combined_val: u32) -> (u16, u16) {
+    let max_u16_as_u32: u32 = (!0 as u16) as u32;
+    let right_val: u16 = (max_u16_as_u32 & combined_val) as u16;
+    let left_val: u16 = ((!0 as u32 - max_u16_as_u32) & combined_val) as u16;
+    (left_val, right_val)
 }
 
 // Just adds meaningful names to the start->end indices that a certain TextBlock's contents
@@ -346,7 +363,7 @@ impl<'a> UI<'a> {
         let end = start + text_block.contents_len();
         self.text_blocks.push((text_block, TextBlockRange {start, end} ));
         self.positions.push(block_position);
-        self.set_char_vertex_vec(start);
+        self.set_char_vertex_vec(0);
     }
 
     // Removes the a TextBlock object at the given location if the index was valid,
@@ -371,17 +388,15 @@ impl<'a> UI<'a> {
 
     // Renders all the Characters to the window.
     pub fn draw(&self) {
-        if let (Some(vao), Some(ssbo), Some(shader_program)) = (&self.vao, &self.ssbo, &self.shader_program) {
+        if let (Some(vao), Some(shader_program)) = (&self.vao, &self.shader_program) {
             shader_program.activate();
             vao.bind();
-            // ssbo.bind();
             unsafe {
                 /* The Cursor's gl_InstanceID u32   */ gl::Uniform1ui(self.uniforms[0], self.chars_vec.len() as u32 - 1);
                 /* The glfwGetTime                  */ gl::Uniform1f(self.uniforms[1], glfwGetTime() as gl::types::GLfloat);
                 gl::DrawArraysInstanced(gl::TRIANGLE_STRIP, 0, 4, self.chars_vec.len() as gl::types::GLsizei);
             }
             vao.unbind();
-            // ssbo.unbind();
         } else {
             eprintln!("You cannot draw an UI element that doesn't have a shader program.\nPerhaps you forgot to do: ui.init_shader(vert_file, frag_file)")
         }
@@ -486,7 +501,7 @@ impl<'a> UI<'a> {
             /* aLetter2 : uvec4 */ vao.link_attrib_i( &chars_vbo, 2, 4, gl::UNSIGNED_INT, size_of::<CharVertex>() as i32, (4 * size_of::<u32>()) as *const c_void);
             /* aColor   : vec4  */ vao.link_attrib( &chars_vbo, 3, 4, gl::FLOAT, size_of::<CharVertex>() as i32, (8 * size_of::<u32>()) as *const c_void);
             /* aIndex   : float */ vao.link_attrib( &chars_vbo, 4, 1, gl::FLOAT, size_of::<CharVertex>() as i32, (4 * size_of::<f32>() + 8 * size_of::<u32>()) as *const c_void);
-            /* aSSBO    : uint  */ vao.link_attrib_i( &chars_vbo, 5, 1, gl::UNSIGNED_INT, size_of::<CharVertex>() as i32, (7 * size_of::<f32>() + 8 * size_of::<u32>()) as *const c_void);
+            /* aSSBO    : uint  */ vao.link_attrib_i( &chars_vbo, 5, 1, gl::UNSIGNED_INT, size_of::<CharVertex>() as i32, (5 * size_of::<f32>() + 8 * size_of::<u32>()) as *const c_void);
 
             unsafe {
                 /* Divisors */ gl::VertexAttribDivisor(1, 1);
