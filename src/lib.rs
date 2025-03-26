@@ -46,11 +46,14 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut ui_elements = ui::UI::new();
     ui_elements.init_shader("src/shaders/ui.vert", "src/shaders/ui.frag")?;
-
     ui_elements.push_textblock(
-        ui::text::TextBlock::from(String::from(""),
+        ui::text::TextBlock::from(String::from("I am the first one."),
         glm::Vec4::new(1.0, 1.0, 1.0, 1.0)),
-        ui::TextBlockPosition::new(glm::Vec3::new(-0.8, 0.8, -1.0), [32, 32], [1000, 1000], [0, 0]));
+        ui::TextBlockPosition::new(glm::Vec4::new(-0.8, 0.8, -1.0, 1.0), [32, 32], [1000, 1000], [0, 0]));
+    ui_elements.push_textblock(
+        ui::text::TextBlock::from(String::from("Duckbill Studio :D"),
+        glm::Vec4::new(1.0, 1.0, 1.0, 1.0)),
+        ui::TextBlockPosition::new(glm::Vec4::new(-0.8, -0.5, -1.0, 1.0), [32, 32], [1000, 1000], [0, 0]));
     ui_elements.reset_vao();
     ui_elements.gen_ssbo();
 

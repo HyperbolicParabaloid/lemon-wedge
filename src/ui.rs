@@ -199,24 +199,21 @@ pub struct CharVertex {
 #[derive(Debug)]
 #[repr(C)]
 pub struct TextBlockPosition {
-    position: glm::Vec3,// This one should be obvious, just postion in 3D space.
+    position: glm::Vec4,// This one should be obvious, just postion in 3D space.
     dimensions: u32,    // This is actually a "packed" value, two u16's representing the max X and Y chars that are drawn.
     step_size: u32,     // Another "packed" value representing the horizontal and vertical separation between chars.
                         // The u16's they break out into, represent the 100th of a % step difference, based on the size of the chars.
                         // That means, if we have the horizontal being 10000, we want the space between each char, to be (100 * 100) / 10000 * char size.
     char_size: u32,     // Packed val representing the font size of the chars width and height.
+    padding: u32,       // Padding I guess.
 }
 impl TextBlockPosition {
-    // pub fn new(position: glm::Vec3, dimensions: glm::UVec2, step_size: glm::Vec2) -> Self {
-        // TextBlockPosition { position, dimensions, step_size }
-    // }
-    pub fn new(position: glm::Vec3, dimensions: [u16; 2], step_size: [u16; 2], char_size: [u16; 2]) -> Self {
-
+    pub fn new(position: glm::Vec4, dimensions: [u16; 2], step_size: [u16; 2], char_size: [u16; 2]) -> Self {
         let dimensions = two_u16_to_u32(dimensions[0], dimensions[1]);
         let step_size = two_u16_to_u32(step_size[0], step_size[1]);
         let char_size = two_u16_to_u32(char_size[0], char_size[1]);
 
-        TextBlockPosition { position, dimensions, step_size, char_size }
+        TextBlockPosition { position, dimensions, step_size, char_size, padding: 0 }
     }
 }
 
@@ -228,7 +225,7 @@ fn two_u16_to_u32(left_val: u16, right_val: u16) -> u32 {
 fn u32_to_two_u16s(combined_val: u32) -> (u16, u16) {
     let max_u16_as_u32: u32 = (!0 as u16) as u32;
     let right_val: u16 = (max_u16_as_u32 & combined_val) as u16;
-    let left_val: u16 = ((!0 as u32 - max_u16_as_u32) & combined_val) as u16;
+    let left_val: u16 = (((!0 as u32 - max_u16_as_u32) & combined_val) >> 16) as u16;
     (left_val, right_val)
 }
 
@@ -257,9 +254,9 @@ pub struct UI<'a> {
     vao: Option<VAO>,
     ssbo: Option<SSBO>,
     uniforms: Vec<gl::types::GLint>,
+    target_block_index: u32,
     cursor_pos: CursorPos,
     cursor_char: char,
-    dimensions: (u32, u32),
     tab_size: u32,
 }
 
@@ -282,10 +279,10 @@ impl<'a> UI<'a> {
             shader_program: None,
             vao: None,
             ssbo: None,
+            target_block_index: 0,
             cursor_pos: CursorPos::END(vertical_offset),
             cursor_char: '_',
             uniforms: Vec::new(),
-            dimensions: (32, 32),
             tab_size: 4,
         };
 
@@ -353,17 +350,18 @@ impl<'a> UI<'a> {
 
         // Resetting the Chars Vec, and the VAO.
         self.chars_vec.clear();
-        self.set_char_vertex_vec(text_block_index);
+        self.set_char_vertex_vec();
         self.reset_vao();
     }
 
     // Pushes new TextBlock onto the Vector, and resets the chars_vec.
     pub fn push_textblock(&mut self, text_block: text::TextBlock, block_position: TextBlockPosition) {
-        let start = self.text_blocks.len();
-        let end = start + text_block.contents_len();
-        self.text_blocks.push((text_block, TextBlockRange {start, end} ));
+        // let start = self.text_blocks.len();
+        // let end = start + text_block.contents_len();
+        self.text_blocks.push((text_block, TextBlockRange {start: 0, end: 0} ));
         self.positions.push(block_position);
-        self.set_char_vertex_vec(0);
+        self.chars_vec.clear();
+        self.set_char_vertex_vec();
     }
 
     // Removes the a TextBlock object at the given location if the index was valid,
@@ -520,6 +518,9 @@ impl<'a> UI<'a> {
     fn insert_char(&mut self, text_block_index: usize, scancode_and_modifiers: (usize, Modifiers))  {
         let (scancode, modifiers) = scancode_and_modifiers;
 
+        let dimensions = u32_to_two_u16s(self.positions[text_block_index].dimensions);
+        let (dim_x, _) = (dimensions.0 as u32, dimensions.1 as u32);
+
         let new_char = if modifiers.contains(Modifiers::Shift) {
             SCANCODE_MAP[scancode].1
         } else {
@@ -529,16 +530,16 @@ impl<'a> UI<'a> {
             CursorPos::BEGINING => {
                 self.text_blocks[text_block_index].0.insert_char(new_char, 0);
                 self.cursor_pos = match new_char {
-                    '\n' => CursorPos::CUSTOM((1, self.dimensions.0 as f32)),
-                    '\t' => CursorPos::CUSTOM((1, self.tab_size as f32)),
+                    '\n' => CursorPos::CUSTOM((1, dim_x as f32)),
+                    '\t' => CursorPos::CUSTOM((1, ((self.tab_size) % dim_x) as f32)),
                     _ => CursorPos::CUSTOM((1, 1.0))
                 }
             }
             CursorPos::CUSTOM((index, position))  => {
                 self.text_blocks[text_block_index].0.insert_char(new_char, index);
-                let tab_change = (position as u32 % 32) % 5;
+                let tab_change = (position as u32 % self.tab_size) % (self.tab_size + 1);
                 self.cursor_pos = match new_char {
-                    '\n' => CursorPos::CUSTOM((index + 1, position + (self.dimensions.0 - (position as u32 % self.dimensions.0)) as f32)),
+                    '\n' => CursorPos::CUSTOM((index + 1, position + (dim_x - (position as u32 % dim_x)) as f32)),
                     '\t' => CursorPos::CUSTOM((index + 1, position + if tab_change == self.tab_size { self.tab_size as f32 + 1.0 } else { self.tab_size as f32 - tab_change as f32 })),
                     _ => CursorPos::CUSTOM((index + 1, position + 1.0))
                 }
@@ -549,11 +550,14 @@ impl<'a> UI<'a> {
 
     // Returns the new CursorPos if the char "Backspaced" was a NEWLINE.
     fn backspace_newline(&self, new_index: usize, position: f32, text_block_index: usize) -> CursorPos {
+        let dimensions = u32_to_two_u16s(self.positions[text_block_index].dimensions);
+        let (dim_x, _) = (dimensions.0 as u32, dimensions.1 as u32);
+
         match new_index {
             0 => CursorPos::BEGINING,
             _ => {
-                let start = match new_index.checked_sub(self.dimensions.0 as usize) { None => 0, Some(val) => val };
-                let mut offset = position - self.dimensions.0 as f32;
+                let start = match new_index.checked_sub(dim_x as usize) { None => 0, Some(val) => val };
+                let mut offset = position - dim_x as f32;
                 for c in self.text_blocks[text_block_index].0.get_contents()[start..new_index].chars().rev() {
                     match c {
                         '\n' => break,
@@ -610,27 +614,37 @@ impl<'a> UI<'a> {
     }
 
     // Takes in a mutable reference to self, to set the characters Vector.
-    fn set_char_vertex_vec(&mut self, index: usize) {
-        let text_block = &self.text_blocks[index];
-        
-        let mut count: f32 = 0.0;
-        for text_char in text_block.0.get_contents().chars() {
-            match text_char {
-                '\n' => { count += (self.dimensions.0 - (count as u32 % self.dimensions.0)) as f32; }
-                '\t' => {
-                    let tab_change = (count as u32 % self.dimensions.0) % (self.tab_size + 1);
-                    count += if tab_change == self.tab_size { self.tab_size as f32 + 1.0 } else { self.tab_size as f32 - tab_change as f32 }
+    fn set_char_vertex_vec(&mut self) {
+        for index in 0..self.positions.len() {
+
+            let text_block = &self.text_blocks[index];
+            let mut count: f32 = 0.0;
+
+            let dimensions = u32_to_two_u16s(self.positions[index].dimensions);
+            let (dim_x, _) = (dimensions.0 as u32, dimensions.1 as u32);
+
+            for text_char in text_block.0.get_contents().chars() {
+                match text_char {
+                    '\n' => { count += (dim_x - (count as u32 % dim_x)) as f32; }
+                    '\t' => {
+                        let tab_change = (count as u32 % dim_x) % (self.tab_size + 1);
+                        count += if tab_change == self.tab_size { self.tab_size as f32 + 1.0 } else { self.tab_size as f32 - tab_change as f32 }
+                    }
+                    ' '..='⌂' => {
+                        self.chars_vec.push(self.gen_char_vertex(text_char, index, count));
+                        count += 1.0;
+                    }
+                    _ => {}
                 }
-                ' '..='⌂' => {
-                    self.chars_vec.push(self.gen_char_vertex(text_char, index, count));
-                    count += 1.0;
-                }
-                _ => {}
+            }
+
+            // THIS IS JUST FOR TESTING //
+            if index == 0 {
+                self.add_cursor(index, count);
             }
         }
 
-        // Adding the Cursor to show the user where they will be typing.
-        self.add_cursor(index, count);
+
     }
 
     // Adds the cursor into the correct position after all the chars are done being added into chars_vec.

@@ -25,13 +25,13 @@ uvec2 u32_to_two_u16s(uint combined_val) {
 
 // For each character:
 struct TextBlock {
-
-    vec3 position;		// This one should be obvious, just postion in 3D space.
+    vec4 position;		// This one should be obvious, just postion in 3D space.
     uint dimensions;    // This is actually a "packed" value, two u16's representing the max X and Y chars that are drawn.
     uint step_size;     // Another "packed" value representing the horizontal and vertical separation between chars.
                         // The u16's they break out into, represent the 100th of a % step difference, based on the size of the chars.
                         // That means, if we have the horizontal being 10000, we want the space between each char, to be (100 * 100) / 10000 * char size.
     uint char_size;     // Packed val representing the font size of the chars width and height.
+	uint padding;		// Padding I suppose.
 };
 
 // SSBO containing character positions and data
@@ -59,41 +59,14 @@ uniform uint cursor_index;
 
 // Calculating the position of each of the characters.
 void main() {
-	/*
-	// TextBlock text_block_data = positions[0];
+	// vec3 block_position = vec3(-0.8, 0.8, -1.0);
+	// uvec2 block_dimensions = uvec2(32, 32);
+	vec2 block_step_size = vec2(0.05);
 
-	TextBlock text_block_data = TextBlock(vec3(-0.8, 0.8, -1.0), uvec2(32, 32), vec2(0.05, 0.05));
-
-	// This is for sinking stuff like lowercase g's and y's so they look right.
-	float fraction = (1.f + fract(aIndex) - 0.5) * text_block_data.block_step_size.y;
-	float wholeIndex = aIndex - fract(aIndex);
-
-	// Deltas.
-	float deltaX = text_block_data.block_step_size.x * float(uint(wholeIndex) % text_block_data.block_dimensions.x); //// TESTING ////
-	float deltaY = fraction + text_block_data.block_step_size.y * floor(wholeIndex / float(text_block_data.block_dimensions.x));// * 2.0; //// TESTING ////
-	
-	// Setting the position.
-	gl_Position = vec4(aPos.x * text_block_data.block_step_size.x + text_block_data.block_position.x + deltaX, aPos.y * text_block_data.block_step_size.y + text_block_data.block_position.y - deltaY * 1.65f + fraction, -1.0, 1.f);
-
-	// sending out the changes.
-	color = aColor * ((gl_InstanceID == cursor_index && fract(time) < 0.5) ? 0.f : 1.f);
-	letter1 = aLetter1;
-	letter2 = aLetter2;
-	quadCoord = vec2( -aPos.x,  aPos.y);
-	step_size = text_block_data.block_step_size.x;
-	// */
-
-	///*
-
-
-// vec3 block_position = vec3(-0.8, 0.8, -1.0);
-// uvec2 block_dimensions = uvec2(32, 32);
-// vec2 block_step_size = vec2(0.05);
-
-	vec3 block_position = positions[aSSBOIndex].position;
+	vec3 block_position = positions[aSSBOIndex].position.xyz;
 	uvec2 block_dimensions = u32_to_two_u16s(positions[aSSBOIndex].dimensions);
 	uvec2 uvec_steps = u32_to_two_u16s(positions[aSSBOIndex].step_size);
-	vec2 block_step_size = vec2(uvec_steps) / 1000.0 * 0.05;
+	// vec2 block_step_size = vec2(uvec_steps) / 1000.0 * 0.05;
 	// uvec2 chars = u32_to_two_u16s(positions[aSSBOIndex].char_size);
 
 	// This is for sinking stuff like lowercase g's and y's so they look right.
@@ -110,6 +83,11 @@ void main() {
 	// sending out the changes.
 	// color = aColor * ((gl_InstanceID == cursor_index && fract(time) < 0.5) ? 0.f : 1.f);
 	color = aColor * ((gl_InstanceID == cursor_index && fract(time) < 0.5) ? 0.f : 1.f);
+	// if (block_dimensions.x == 4 || block_dimensions.y == 4) {
+		// color = vec4(0.0, 0.0, 0.0, 1.0);
+	// } else {
+		// color = aColor;
+	// }
 	letter1 = aLetter1;
 	letter2 = aLetter2;
 	quadCoord = vec2( -aPos.x,  aPos.y);
