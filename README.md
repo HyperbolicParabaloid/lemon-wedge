@@ -25,3 +25,28 @@ user is currently interacting with, so we can place the cursor there and any edi
 Additionally, I'm thinking of having padding items added to the end of text_blocks, to round them up to something simple like multiples of 64 or something.
 That way, small edits to something will only require that a portion of the chars_vec be updated, instead of having to set it back, or shift large chunks of
 data when changing individual items one by one, at small block_position indices.
+
+Okay so, practical example.
+
+    text_blocks = [
+        TextBlock0("Short"),
+        TextBlock1("I am the\nfirst\t\ttext-block."),
+        TextBlock2("I am the second\n\ntext-block, and I'm\nmuch longer than the first one.")
+    ]
+
+        ||
+        ||
+        \/
+
+    chars_vec = [
+        // Here, we have 5 characters with values, and we have 59 'Padding' CharVertex structs here. If we extend this string anymore, instead of having to shift the entire chars_vec Vector, we can safely add up to 59 more, and only need to update the data in this 0->63 index chunk.
+        'S', 'h', 'o', 'r', 't', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ' 
+
+        // This has 24 chars, and 40 padding CharVertices.
+        'I', ' ', 'a', 'm', ' ', 't', 'h', 'e', 'f', 'i', 'r', 's', 't', 't', 'e', 'x', 't', '-', 'b', 'l', 'o', 'c', 'k', '.', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ' 
+
+        // This is 65 actual characters, so we round up to the next multiple of 64: 128.        
+        'I', ' ', 'a', 'm', ' ', 't', 'h', 'e', ' ', 's', 'e', 'c', 'o', 'n', 'd', 't', 'e', 'x', 't', '-', 'b', 'l', 'o', 'c', 'k', ',', ' ', 'a', 'n', 'd', ' ', 'I', ''', 'm', 'm', 'u', 'c', 'h', ' ', 'l', 'o', 'n', 'g', 'e', 'r', ' ', 't', 'h', 'a', 'n', ' ', 't', 'h', 'e', ' ', 'f', 'i', 'r', 's', 't', ' ', 'o', 'n', 'e', 
+        // Second 64-CharVertex chunk. 
+        '.', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ' 
+    ]

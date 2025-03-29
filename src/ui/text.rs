@@ -27,9 +27,31 @@ is the follow:
     This will make it easy to do things like change the size, position, color, etc of text. This should be cool.
 */
 
+/// # BlockType
+/// 
+/// ## Enums:
+/// ### DynamicLarge
+/// * For TextBlocks that update frequently, in large chunks.
+/// * #### Example:
+///     A "Paginated" view into a large file. As a user scrolls, large chunks of the data will change.
+/// ### DynamicSmall
+/// * For TextBlocks that update frequently, but only change by a small amount of data at a time.
+/// * #### Example:
+///     A username/password input feild.
+/// ### Static
+/// * For TextBlocks that are set once, and never udpated.
+/// * #### Example:
+///     Informational data such as labels.
+pub enum BlockType {
+    DynamicLarge,
+    DynamicSmall,
+    Static
+}
+
 pub struct TextBlock {
     contents: String,
     color: glm::Vec4,
+    block_type: BlockType
 }
  
 impl TextBlock {
@@ -41,6 +63,7 @@ impl TextBlock {
         TextBlock{
             contents,
             color,
+            block_type: BlockType::DynamicSmall
         }
     }
 
@@ -82,6 +105,14 @@ impl TextBlock {
         }
         None
     }
+
+    fn block_type_map(&self) -> u32 {
+        match self.block_type {
+            BlockType::Static => 0,
+            BlockType::DynamicSmall => 1,
+            BlockType::DynamicLarge => 2
+        }
+    }
 }
 
 impl Default for TextBlock {
@@ -89,6 +120,46 @@ impl Default for TextBlock {
         Self {
             contents: String::new(),
             color: glm::vec4(1.0, 1.0, 1.0, 1.0),
+            block_type: BlockType::DynamicSmall
+        }
+    }
+}
+
+impl PartialEq for TextBlock {
+    fn eq(&self, other: &Self) -> bool {
+        self.block_type_map() == other.block_type_map()
+    }
+
+    fn ne(&self, other: &Self) -> bool {
+        self.block_type_map() != other.block_type_map()
+    }
+}
+
+/// Static < DynamicSmall < DynamicLarge
+impl PartialOrd for TextBlock {
+    fn ge(&self, other: &Self) -> bool {
+        self.block_type_map() >= other.block_type_map()
+    }
+
+    fn gt(&self, other: &Self) -> bool {
+        self.block_type_map() > other.block_type_map()
+    }
+
+    fn le(&self, other: &Self) -> bool {
+        self.block_type_map() <= other.block_type_map()
+    }
+
+    fn lt(&self, other: &Self) -> bool {
+        self.block_type_map() < other.block_type_map()
+    }
+
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        if self > other {
+            Some(std::cmp::Ordering::Greater)
+        } else if self < other {
+            Some(std::cmp::Ordering::Less)
+        } else {
+            Some(std::cmp::Ordering::Equal)
         }
     }
 }
