@@ -304,34 +304,36 @@ impl TextWidget {
     }
 
 
+    // Sets a new text box as active, and updates the inactive/active_chars Vec's accordingly.
     pub fn set_active_text_box(&mut self, text_box_index: usize) {
-        // If we already have an active text box we're editing, we want to make sure to
-        // write the changes back into the inactive_chars Vec and update all the start_indices
-        // that will be changed if the inactive_chars Vec needs to resize in order to accomidate
-        // the changes.
         match self.active_box {
             None => self.active_box = Some(text_box_index),
             Some(active_index) => {
-                // We're already tracking this as the active text box, so nothing else to do, we can return early.
-                if active_index == text_box_index {
-                    return;
-                }
-
-                // Updating inactive_chars with the data in active_chars.
+                if active_index == text_box_index { return; }
                 self.insert_active_into_inactive(active_index);
+                self.active_box = Some(active_index);
             }
         }
 
+        self.set_new_active(text_box_index);
+    }
+
+
+    // Gets a new capacity.
+    fn capacity_from_length(&self, length: usize) -> usize {
+        ( (length / Self::CHARS_PER_BOX)
+        + if length % Self::CHARS_PER_BOX > 0 { 1 } else { 0 } )
+        * Self::CHARS_PER_BOX
+    }
+
+
+    // Sets the inactive/active_chars from a given range.
+    fn set_new_active(&mut self, text_box_index: usize) {
         let new_active_dimensions = &self.text_boxes[text_box_index];
-        
         let start = new_active_dimensions.start_index;
         let end = start + new_active_dimensions.capacity;
         
-        let capacity = 
-            ( (new_active_dimensions.length / Self::CHARS_PER_BOX)
-            + if new_active_dimensions.length % Self::CHARS_PER_BOX > 0 { 1 } else { 0 } )
-            * Self::CHARS_PER_BOX;
-
+        let capacity = self.capacity_from_length(new_active_dimensions.length);
         let new_active_slice = &self.inactive_chars[start..end];
 
         // Setting active_chars.
@@ -342,7 +344,6 @@ impl TextWidget {
         let null_chars_range = vec![CharVertex::null_char(); new_active_dimensions.capacity];
         self.inactive_chars[start..end].copy_from_slice(&null_chars_range);
     }
-
 
     // This function sets the value of a given range with the data in active_chars. 
     fn insert_active_into_inactive(&mut self, active_index: usize) {
@@ -380,7 +381,7 @@ impl TextWidget {
     }
 
 
-    // Decently performant slice replacing.a
+    // Decently performant slice replacing.
     #[allow(unused)]
     fn fast_slice_replace(&mut self, start: usize, end: usize) {
         self.inactive_chars.drain(start..end);
