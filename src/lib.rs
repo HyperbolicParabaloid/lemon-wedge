@@ -1,6 +1,7 @@
 use std::sync::mpsc;
 
 pub mod graphics_engine;
+pub mod text_box;
 pub mod ui;
 pub mod vao;
 pub mod ssbo;

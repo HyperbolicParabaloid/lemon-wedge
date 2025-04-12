@@ -53,7 +53,7 @@ pub struct TextBlock {
     color: glm::Vec4,
     block_type: BlockType
 }
- 
+
 impl TextBlock {
     pub fn new() -> TextBlock {
         Default::default()
@@ -117,6 +117,7 @@ impl TextBlock {
 
 impl Default for TextBlock {
     fn default() -> Self {
+        let color = glm::vec4(1.0, 1.0, 1.0, 1.0);
         Self {
             contents: String::new(),
             color: glm::vec4(1.0, 1.0, 1.0, 1.0),
