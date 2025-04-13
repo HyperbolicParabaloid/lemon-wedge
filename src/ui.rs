@@ -646,28 +646,28 @@ impl<'a> UI<'a> {
 
     // Updates a single text-block, and invokes either a shift or index change of the rest of the UI class depending on if the text_block's
     // size overflows the pre-allocated size, or if it gets removed or something.
-    fn update_textblock(&self, index: usize) {
-        // let text_block = &self.text_blocks[index];
-        // let mut count: f32 = 0.0;
+    // fn update_textblock(&self, index: usize) {
+    //     // let text_block = &self.text_blocks[index];
+    //     // let mut count: f32 = 0.0;
 
-        // let dimensions = u32_to_two_u16s(self.positions[index].dimensions);
-        // let (dim_x, _) = (dimensions.0 as u32, dimensions.1 as u32);
+    //     // let dimensions = u32_to_two_u16s(self.positions[index].dimensions);
+    //     // let (dim_x, _) = (dimensions.0 as u32, dimensions.1 as u32);
 
-        // for text_char in text_block.0.get_contents().chars() {
-        //     match text_char {
-        //         '\n' => { count += (dim_x - (count as u32 % dim_x)) as f32; }
-        //         '\t' => {
-        //             let tab_change = (count as u32 % dim_x) % (self.tab_size + 1);
-        //             count += if tab_change == self.tab_size { self.tab_size as f32 + 1.0 } else { self.tab_size as f32 - tab_change as f32 }
-        //         }
-        //         ' '..='⌂' => {
-        //             self.chars_vec.push(self.gen_char_vertex(text_char, index, count));
-        //             count += 1.0;
-        //         }
-        //         _ => {}
-        //     }
-        // }        
-    }
+    //     // for text_char in text_block.0.get_contents().chars() {
+    //     //     match text_char {
+    //     //         '\n' => { count += (dim_x - (count as u32 % dim_x)) as f32; }
+    //     //         '\t' => {
+    //     //             let tab_change = (count as u32 % dim_x) % (self.tab_size + 1);
+    //     //             count += if tab_change == self.tab_size { self.tab_size as f32 + 1.0 } else { self.tab_size as f32 - tab_change as f32 }
+    //     //         }
+    //     //         ' '..='⌂' => {
+    //     //             self.chars_vec.push(self.gen_char_vertex(text_char, index, count));
+    //     //             count += 1.0;
+    //     //         }
+    //     //         _ => {}
+    //     //     }
+    //     // }        
+    // }
 
     // Adds the cursor into the correct position after all the chars are done being added into chars_vec.
     fn add_cursor(&mut self, index: usize, count: f32) {

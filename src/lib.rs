@@ -1,5 +1,7 @@
 use std::sync::mpsc;
 
+use text_box::TextWidget;
+
 pub mod graphics_engine;
 pub mod text_box;
 pub mod ui;
@@ -45,18 +47,24 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     let mut vert_handler = shader::ShaderHandler::try_new("src/shaders/ui.vert")?;
     let mut frag_handler = shader::ShaderHandler::try_new("src/shaders/ui.frag")?;
 
-    let mut ui_elements = ui::UI::new();
-    ui_elements.init_shader("src/shaders/ui.vert", "src/shaders/ui.frag")?;
-    ui_elements.push_textblock(
-        ui::text::TextBlock::from(String::from("I am the first one."),
-        glm::Vec4::new(1.0, 1.0, 1.0, 1.0)),
-        ui::TextBlockPosition::new(glm::Vec4::new(-0.8, 0.8, -1.0, 1.0), [32, 32], [1000, 1000], [0, 0]));
-    ui_elements.push_textblock(
-        ui::text::TextBlock::from(String::from("Duckbill Studio :D"),
-        glm::Vec4::new(1.0, 1.0, 1.0, 1.0)),
-        ui::TextBlockPosition::new(glm::Vec4::new(-0.8, -0.5, -1.0, 1.0), [32, 32], [1000, 1000], [0, 0]));
-    ui_elements.reset_vao();
-    ui_elements.gen_ssbo();
+    // let mut ui_elements = ui::UI::new();
+    // ui_elements.init_shader("src/shaders/ui.vert", "src/shaders/ui.frag")?;
+    // ui_elements.push_textblock(
+    //     ui::text::TextBlock::from(String::from("I am the first one."),
+    //     glm::Vec4::new(1.0, 1.0, 1.0, 1.0)),
+    //     ui::TextBlockPosition::new(glm::Vec4::new(-0.8, 0.8, -1.0, 1.0), [32, 32], [1000, 1000], [0, 0]));
+    // ui_elements.push_textblock(
+    //     ui::text::TextBlock::from(String::from("Duckbill Studio :D"),
+    //     glm::Vec4::new(1.0, 1.0, 1.0, 1.0)),
+    //     ui::TextBlockPosition::new(glm::Vec4::new(-0.8, -0.5, -1.0, 1.0), [32, 32], [1000, 1000], [0, 0]));
+    // ui_elements.reset_vao();
+    // ui_elements.gen_ssbo();
+    let mut text_widget = TextWidget::new();
+    text_widget.init_shader("src/shaders/ui.vert", "src/shaders/ui.frag")?;
+    text_widget.add_text_box(&String::from("Hello, World!"), glm::Vec2::new(-0.5, 0.5), glm::Vec2::new(0.5, -0.5));
+    text_widget.init_vaos();
+    text_widget.gen_ssbo();
+
 
 	// Enables the Depth Buffer and does backface culling.
     unsafe {
@@ -80,16 +88,17 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         if frag_handler.was_modified()? || vert_handler.was_modified()? {
-            ui_elements.reload_shader()?;
+            // ui_elements.reload_shader()?;
         }
 
-        // Updating textblock.
-        match rx.try_recv() {
-            Ok(c) => ui_elements.append_textblock(0, c),
-            Err(_) => {}
-        }
+        // // Updating textblock.
+        // match rx.try_recv() {
+        //     Ok(c) => ui_elements.append_textblock(0, c),
+        //     Err(_) => {}
+        // }
 
-        ui_elements.draw();
+        // ui_elements.draw();
+        text_widget.draw();
         window.update();
     }
 

@@ -117,7 +117,6 @@ impl TextBlock {
 
 impl Default for TextBlock {
     fn default() -> Self {
-        let color = glm::vec4(1.0, 1.0, 1.0, 1.0);
         Self {
             contents: String::new(),
             color: glm::vec4(1.0, 1.0, 1.0, 1.0),

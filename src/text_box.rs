@@ -1,3 +1,13 @@
+use std::collections::HashMap;
+
+use crate::shader::Shader;
+use crate::ssbo::SSBO;
+use crate::vao::VAO;
+use crate::vbo::VBO;
+
+use std::os::raw;
+use glfw::ffi;
+
 // Maping of a char as u8, to a [u32; 8] that represents the Char in memory for the GPU to draw.
 pub const CHAR_MAP: [(f32, [u32; 8]); 100] = [
     /*   */ (0.5, [0, 0, 0, 0, 0, 0, 0, 0]),
@@ -198,7 +208,7 @@ impl CharVertex {
 
     pub fn new(text_char: char, text_block_index: usize, position: f32, color: &[f32; 4]) -> CharVertex {
         let (vertical_offset, bit_array) = CHAR_MAP[text_char as usize - 32];
-        CharVertex{
+        CharVertex {
             letter: [
                 glm::UVec4::new(bit_array[0], bit_array[1], bit_array[2], bit_array[3]),
                 glm::UVec4::new(bit_array[4], bit_array[5], bit_array[6], bit_array[7])],
@@ -221,8 +231,28 @@ pub struct BoxPosition {
     char_size: u32,     // Packed val representing the font size of the chars width and height.
     padding: u32,       // Padding I guess.
 }
+impl BoxPosition {
+    pub fn new(position: glm::Vec4, dimensions: [u16; 2], step_size: [u16; 2], char_size: [u16; 2]) -> Self {
+        let dimensions = two_u16_to_u32(dimensions[0], dimensions[1]);
+        let step_size = two_u16_to_u32(step_size[0], step_size[1]);
+        let char_size = two_u16_to_u32(char_size[0], char_size[1]);
+
+        BoxPosition { position, dimensions, step_size, char_size, padding: 0 }
+    }
+}
+fn two_u16_to_u32(left_val: u16, right_val: u16) -> u32 {
+    (!0 as u32 & (left_val as u32) << 16) + right_val as u32
+}
+#[allow(unused)]
+fn u32_to_two_u16s(combined_val: u32) -> (u16, u16) {
+    let max_u16_as_u32: u32 = (!0 as u16) as u32;
+    let right_val: u16 = (max_u16_as_u32 & combined_val) as u16;
+    let left_val: u16 = (((!0 as u32 - max_u16_as_u32) & combined_val) >> 16) as u16;
+    (left_val, right_val)
+}
 
 /// The UV coordinates go from -1 -> 1, with (-1, 1) being the top-left corner of the window, and (1, -1) being the bottom-right.
+#[derive(Clone, Copy)]
 pub struct Dimensions {
     start_index: usize,
     length: usize,
@@ -230,17 +260,45 @@ pub struct Dimensions {
     top_left: glm::Vec2,
     bottom_right: glm::Vec2
 }
+impl Dimensions {
+    pub fn empty() -> Self {
+        Dimensions {
+            start_index: 0,
+            length: 0,
+            capacity: TextWidget::CHARS_PER_BOX,
+            top_left: glm::Vec2::new(0.0, 0.0),
+            bottom_right: glm::Vec2::new(0.0, 0.0)
+        }
+    }
+}
 
 /// This struct is for holding all the Characters in the UI. It's job is essentially to render all the characters in just 2
 /// draw calls so it can be done quickly, at the cost of modularity.
-pub struct TextWidget {
+pub struct TextWidget<'a> {
+    // Data items.
     text_boxes: Vec<Dimensions>,
     inactive_chars: Vec<CharVertex>,
     active_chars: Vec<CharVertex>,
-    active_box: Option<usize>
+    active_box: Option<usize>,
+    positions: Vec<BoxPosition>,
+    // Graphics specific items.
+    shader_program: Option<Shader<'a>>,
+    uniforms: std::collections::HashMap<&'a str, gl::types::GLint>,
+    ssbo: Option<SSBO>,
+    a_vao: Option<VAO>,
+    ia_vao: Option<VAO>,
 }
 
-impl TextWidget {
+impl<'a> Drop for TextWidget<'a> {
+   fn drop(&mut self) {
+        if let Some(a_vao) = &self.a_vao { a_vao.delete(); }
+        if let Some(ia_vao) = &self.ia_vao { ia_vao.delete(); }
+        if let Some(ssbo) = &self.ssbo { ssbo.delete(); }
+        if let Some(shader_program) = &self.shader_program { shader_program.delete(); }
+   } 
+}
+
+impl<'a> TextWidget<'a> {
     const CHARS_PER_BOX: usize = 16;
     const FONT_SIZE: f32 = 2.0 / 64.0;
     const TAB_SIZE: u32 = 4;
@@ -248,13 +306,145 @@ impl TextWidget {
 
     pub fn new() -> Self {
         TextWidget {
-            text_boxes: vec![],
+            text_boxes: vec![Dimensions::empty()],
             inactive_chars: vec![],
             active_chars: vec![],
-            active_box: None
+            positions: vec![BoxPosition::new(glm::Vec4::new(-0.8, 0.8, -1.0, 1.0), [32, 32], [1000, 1000], [0, 0])],
+            active_box: None,
+            shader_program: None,
+            uniforms: HashMap::new(),
+            ssbo: None,
+            a_vao: None,
+            ia_vao: None,
         }
     }
 
+
+    // Renders all the Characters to the window.
+    pub fn draw(&self) {
+        if let (Some(ia_vao), Some(shader_program)) = (&self.ia_vao, &self.shader_program) {
+            shader_program.activate();
+            unsafe {
+                /* The Cursor's gl_InstanceID u32   */ gl::Uniform1ui(*self.uniforms.get("cursor_index").unwrap(), self.inactive_chars.len() as u32 - 1);
+                /* The glfwGetTime                  */ gl::Uniform1f(*self.uniforms.get("time").unwrap(), ffi::glfwGetTime() as gl::types::GLfloat);
+            }
+            ia_vao.bind();
+            unsafe { gl::DrawArraysInstanced(gl::TRIANGLE_STRIP, 0, 4, self.inactive_chars.len() as gl::types::GLsizei); }
+            ia_vao.unbind();
+        } else {
+            eprintln!("You cannot draw an UI element that doesn't have a shader program.\nPerhaps you forgot to do: ui.init_shader(vert_file, frag_file)")
+        }
+
+        if let (Some(a_vao), Some(shader_program)) = (&self.a_vao, &self.shader_program) {
+            shader_program.activate();
+            a_vao.bind();
+            unsafe { gl::DrawArraysInstanced(gl::TRIANGLE_STRIP, 0, 4, self.active_chars.len() as gl::types::GLsizei); }
+            a_vao.unbind();
+        }
+    }
+
+
+    //
+    pub fn init_vaos(&mut self) {
+        self.reset_vao(true);
+        self.reset_vao(false);
+    }
+
+
+    // Self explanitory I suppose.
+    pub fn reset_vao(&mut self, inactive_vao: bool) {
+        let target_vao = if inactive_vao { &mut self.ia_vao } else { &mut self.a_vao };
+        match target_vao {
+            Some(vao) => {
+                vao.delete();
+            },
+            None => {}
+        }
+
+        *target_vao = Some(VAO::try_new());
+        self.set_vao(inactive_vao);
+   }
+
+
+    // Binds two newly made VBOs to the VAO.
+    fn set_vao(&mut self, inactive_vao: bool) {
+        if let (Some(vao), Some(shader_program)) = (if inactive_vao { &self.ia_vao } else { &self.a_vao }, &self.shader_program) {
+            shader_program.activate();
+            vao.bind();
+
+            let quad_vbo = VBO::try_new(&QUAD.to_vec(), gl::STATIC_DRAW);
+            let chars_vbo = VBO::try_new(if inactive_vao { &self.inactive_chars } else { &self.active_chars }, gl::STATIC_DRAW);
+
+            /*      TEMPLATE    */
+            /* aPos     : vec2  */ vao.link_attrib( &quad_vbo, 0, 2, gl::FLOAT, (2 * size_of::<f32>()) as i32, std::ptr::null() as *const raw::c_void);
+            /*      INSTANCE    */
+            /* aLetter1 : uvec4 */ vao.link_attrib_i( &chars_vbo, 1, 4, gl::UNSIGNED_INT, size_of::<CharVertex>() as i32, 0 as *const raw::c_void);
+            /* aLetter2 : uvec4 */ vao.link_attrib_i( &chars_vbo, 2, 4, gl::UNSIGNED_INT, size_of::<CharVertex>() as i32, (4 * size_of::<u32>()) as *const raw::c_void);
+            /* aColor   : vec4  */ vao.link_attrib( &chars_vbo, 3, 4, gl::FLOAT, size_of::<CharVertex>() as i32, (8 * size_of::<u32>()) as *const raw::c_void);
+            /* aIndex   : float */ vao.link_attrib( &chars_vbo, 4, 1, gl::FLOAT, size_of::<CharVertex>() as i32, (4 * size_of::<f32>() + 8 * size_of::<u32>()) as *const raw::c_void);
+            /* aSSBO    : uint  */ vao.link_attrib_i( &chars_vbo, 5, 1, gl::UNSIGNED_INT, size_of::<CharVertex>() as i32, (5 * size_of::<f32>() + 8 * size_of::<u32>()) as *const raw::c_void);
+
+            unsafe {
+                /* Divisors */ gl::VertexAttribDivisor(1, 1);
+                /* Divisors */ gl::VertexAttribDivisor(2, 1);
+                /* Divisors */ gl::VertexAttribDivisor(3, 1);
+                /* Divisors */ gl::VertexAttribDivisor(4, 1);
+                /* Divisors */ gl::VertexAttribDivisor(5, 1);
+            }
+            vao.unbind();
+            quad_vbo.unbind();
+            chars_vbo.unbind();
+        }
+    }
+
+
+    // Creates new SSBO.
+    pub fn gen_ssbo(&mut self) {
+        if let Some(ssbo) = &self.ssbo {
+            ssbo.delete();
+        }
+        // let test_vec: Vec<f32> = vec![0.1];
+        // self.ssbo = Some(SSBO::try_new(&test_vec, gl::DYNAMIC_DRAW));
+        if let Some(shader_program) = &self.shader_program {
+            shader_program.activate();
+            println!("{:?}", self.positions);
+            self.ssbo = Some(SSBO::try_new(&self.positions, gl::DYNAMIC_DRAW));
+        }
+    }
+
+
+    // Creates a new shader program if one doesn't already exist.
+    pub fn init_shader(&mut self, vert_file: &'a str, frag_file: &'a str) -> Result<(), Box<dyn std::error::Error>> {
+        if let Some(shader_program) = &self.shader_program {
+            shader_program.delete();
+        }
+        self.shader_program = Some(Shader::try_new(vert_file, frag_file)?);
+        self.uniforms.clear();
+        unsafe {
+            self.uniforms.insert("cursor_index", gl::GetUniformLocation(self.shader_program.as_ref().unwrap().get_id(), b"cursor_index\0".as_ptr() as *const _));
+            self.uniforms.insert("time",  gl::GetUniformLocation(self.shader_program.as_ref().unwrap().get_id(), b"time\0".as_ptr() as *const _));
+        }
+
+        Ok(())
+    }
+
+
+    // Self expalnitory I suppose.
+    pub fn reload_shader(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        if let Some(shader_program) = &mut self.shader_program {
+            println!("Reloading the shader.");
+            shader_program.reload()?;
+        }
+        self.uniforms.clear();
+        unsafe {
+            self.uniforms.insert("cursor_index", gl::GetUniformLocation(self.shader_program.as_ref().unwrap().get_id(), b"cursor_index\0".as_ptr() as *const _));
+            self.uniforms.insert("time",  gl::GetUniformLocation(self.shader_program.as_ref().unwrap().get_id(), b"time\0".as_ptr() as *const _));
+        }
+        Ok(())
+    }
+
+
+    // 
     pub fn add_text_box(&mut self, text: &String, top_left: glm::Vec2, bottom_right: glm::Vec2) {
         // We're using an "SSBO" to store the general positional data for all of the text-boxes. That means,
         // we need to to assign each char what "Text Box" it's suppoed to be apart of. That's why this is here.
@@ -276,6 +466,7 @@ impl TextWidget {
 
         // Adding in the new Text Box dimension.
         self.text_boxes.push(Dimensions { start_index, length, capacity, top_left, bottom_right });
+        self.positions.push(BoxPosition::new(glm::Vec4::new(-0.8, 0.8, -1.0, 1.0), [32, 32], [1000, 1000], [0, 0]));
 
         // Reserving at least enough space for the new chars.
         self.inactive_chars.reserve(
@@ -308,29 +499,61 @@ impl TextWidget {
 
     // Sets a new text box as active, and updates the inactive/active_chars Vec's accordingly.
     pub fn set_active_text_box(&mut self, text_box_index: usize) {
-        match self.active_box {
-            None => self.active_box = Some(text_box_index),
-            Some(active_index) => {
-                if active_index == text_box_index { return; }
-                self.insert_active_into_inactive(active_index);
-                self.active_box = Some(active_index);
-            }
+        // If you enter an invalid text box index, let's just set it to zero.
+        if text_box_index >= self.text_boxes.len() {
+            self.set_active_text_box(0);
+            return;
         }
 
-        self.set_new_active(text_box_index);
+        match text_box_index {
+            0 => {
+                match self.active_box {
+                    None => return,
+                    Some(active_index) => {
+                        self.insert_active_into_inactive(active_index);
+                        self.text_boxes[0] = Dimensions::empty();
+                        self.active_box = None;
+                        self.active_chars.clear();
+                        self.init_vaos();
+                    }
+                }
+            }
+            
+            text_box_index => {
+                // If we have a previous, active text box, let's make sure to add it's contents back into the inactive_chars vec.
+                if let Some(active_index) = self.active_box {
+                    if active_index == text_box_index { return; }
+                    self.insert_active_into_inactive(active_index);
+                }
+
+                // Updating the active_box.
+                self.active_box = Some(text_box_index);
+                self.text_boxes[0] = self.text_boxes[text_box_index];
+                self.set_new_active(text_box_index);
+                self.init_vaos();
+            }
+        }
     }
 
 
     //
     pub fn add_slice_to_active(&mut self, text: &str) {
-        if let Some(active_box) = self.active_box {
-            let dimensions = &self.text_boxes[active_box];
+        if let Some(_) = self.active_box {
+            let dimensions = &self.text_boxes[0];
+            let old_cap = dimensions.capacity;
             let old_len = dimensions.length;
 
             let new_cap = self.capacity_from_length(old_len + text.len());
 
-            let chars_slice = &self.add_chars(text, active_box, new_cap - old_len, self.active_chars[old_len].position);
-            self.active_chars.copy_from_slice(&chars_slice);
+            let chars_slice = &self.add_chars(text, 0, new_cap - old_len, self.active_chars[old_len - 1].position.floor());
+            if old_cap < new_cap {
+                self.active_chars.resize(new_cap, CharVertex::null_char());
+            }
+            self.active_chars[old_len..].copy_from_slice(&chars_slice);
+            
+            let new_len = old_len + text.len();
+            self.text_boxes[0].capacity = new_cap;
+            self.text_boxes[0].length = new_len;
         }
     }
 
@@ -338,12 +561,13 @@ impl TextWidget {
     //
     fn get_dim_x(&self, ssbo_index: usize) -> u32 {
         let top_left = &self.text_boxes[ssbo_index].top_left;
-        let bottom_right = &self.text_boxes[ssbo_index].top_left;
+        let bottom_right = &self.text_boxes[ssbo_index].bottom_right;
         
         (Self::FONT_SIZE / (top_left.x - bottom_right.x)) as u32
     }
 
 
+    //
     fn add_chars(&self, text: &str, ssbo_index: usize, capacity: usize, mut count: f32) -> Vec<CharVertex> {
         let mut chars_vec = vec![];
         let dim_x = self.get_dim_x(ssbo_index);
@@ -404,7 +628,7 @@ impl TextWidget {
         let old_active_dimensions = &self.text_boxes[active_index];
         let difference = self.active_chars.len() - old_active_dimensions.capacity;
 
-        if old_active_dimensions.capacity < self.active_chars.len() { // We don't need to resize the inactive_chars Vec! :D
+        if old_active_dimensions.capacity >= self.active_chars.len() { // We don't need to resize the inactive_chars Vec! :D
             let start = old_active_dimensions.start_index;
             let end = start + old_active_dimensions.capacity;
 
@@ -412,7 +636,6 @@ impl TextWidget {
             self.inactive_chars[start..end].copy_from_slice(&self.active_chars);
 
         } else { // We need to resize the inactive_chars Vec. :(
-
             let start = old_active_dimensions.start_index;
             let end = start + old_active_dimensions.capacity;
             self.fast_slice_replace(start, end);
@@ -449,6 +672,8 @@ impl TextWidget {
 mod tests {
     use super::*;
 
+    const PRINT_RESULTS: bool = false;
+
     // Generates the a CharVertex of the desired type, index and position.
     fn gen_char_vertex(text_char: char) -> CharVertex {
         let (_, bit_array) = CHAR_MAP[text_char as usize - 32];
@@ -463,29 +688,43 @@ mod tests {
     }
 
 
+    // Worlds slowest way to reverse engineer what the character I'm looking for is.
+    fn char_from_charvertex(target_char: &CharVertex) -> char {
+        for i in 32..127 as u8 {
+            let ch = i as char;
+            let char_vert = CharVertex::new(ch, 0, 0.0, &[0.0, 0.0, 0.0, 0.0]);
+            if char_vert.letter == target_char.letter {
+                return ch;
+            }
+        }
+
+        ' '
+    }
+
+
     // Print chars.
     fn print_chars(widget: &TextWidget) {
-        let null_char = CharVertex::null_char().letter;
-        
-        let inactive_iter: Vec<char> = widget.inactive_chars.iter().map(|ch| if ch.letter != null_char { 'c' } else { '0' }).collect();
-        let active_iter: Vec<char> = widget.active_chars.iter().map(|ch| if ch.letter != null_char { 'c' } else { '0' }).collect();
+        if PRINT_RESULTS {
+            println!("\n\n");
+            let inactive_iter: Vec<char> = widget.inactive_chars.iter().map(|ch| char_from_charvertex(ch)).collect();
+            let active_iter: Vec<char> = widget.active_chars.iter().map(|ch| char_from_charvertex(ch)).collect();
 
-        println!("\n\t[ -- Inactive -- ]");
-        let steps = inactive_iter.len() / TextWidget::CHARS_PER_BOX;
-        for i in 0..steps {
-            let start = i * TextWidget::CHARS_PER_BOX;
-            let end = (i + 1) * TextWidget::CHARS_PER_BOX;
-            println!("{:?}", &inactive_iter[start..end]);
-        }
+            println!("\n\t[ -- Inactive -- ]");
+            let steps = inactive_iter.len() / TextWidget::CHARS_PER_BOX;
+            for i in 0..steps {
+                let start = i * TextWidget::CHARS_PER_BOX;
+                let end = (i + 1) * TextWidget::CHARS_PER_BOX;
+                println!("{:?}", &inactive_iter[start..end]);
+            }
 
-        println!("\n\t[ -- Active -- ]");
-        let steps = active_iter.len() / TextWidget::CHARS_PER_BOX;
-        for i in 0..steps {
-            let start = i * TextWidget::CHARS_PER_BOX;
-            let end = (i + 1) * TextWidget::CHARS_PER_BOX;
-            println!("{:?}", &active_iter[start..end]);
+            println!("\n\t[ -- Active -- ]");
+            let steps = active_iter.len() / TextWidget::CHARS_PER_BOX;
+            for i in 0..steps {
+                let start = i * TextWidget::CHARS_PER_BOX;
+                let end = (i + 1) * TextWidget::CHARS_PER_BOX;
+                println!("{:?}", &active_iter[start..end]);
+            }
         }
- 
     }
 
 
@@ -554,12 +793,12 @@ mod tests {
         assert!(widget.inactive_chars.iter().all(|&item| item.letter == c_char ));
 
         let mut widget = TextWidget::new(); widget.add_text_box(&twice_chars_per_box_plus_one, uv_top_left, uv_bottom_right);
-        let length = widget.text_boxes[0].length;
+        let length = widget.text_boxes[1].length;
         assert!(widget.inactive_chars[..length].iter().all(|&item| item.letter == c_char));
         assert!(widget.inactive_chars[length..].iter().all(|&item| item.letter == null_char ));
 
         let mut widget = TextWidget::new(); widget.add_text_box(&thrice_chars_per_box_minus_one, uv_top_left, uv_bottom_right);
-        let length = widget.text_boxes[0].length;
+        let length = widget.text_boxes[1].length;
         assert!(widget.inactive_chars[..length].iter().all(|&item| item.letter == c_char));
         assert!(widget.inactive_chars[length..].iter().all(|&item| item.letter == null_char ));
     }
@@ -580,10 +819,10 @@ mod tests {
         let mut widget = TextWidget::new();
         widget.add_text_box(&twice_chars_per_box, uv_top_left, uv_bottom_right);
         widget.add_text_box(&twice_chars_per_box, uv_top_left, uv_bottom_right);
-        let first_capacity = widget.text_boxes[0].capacity;
-        let first_length = widget.text_boxes[0].length;
-        let second_length = widget.text_boxes[1].length;
-        let second_start = widget.text_boxes[1].start_index;
+        let first_capacity = widget.text_boxes[1].capacity;
+        let first_length = widget.text_boxes[1].length;
+        let second_length = widget.text_boxes[2].length;
+        let second_start = widget.text_boxes[2].start_index;
         assert!(widget.inactive_chars[..first_length].iter().all(|&item| item.letter == c_char));
         assert!(widget.inactive_chars[first_length..first_capacity].iter().all(|&item| item.letter == null_char ));
         assert!(widget.inactive_chars[second_start..(second_start + second_length)].iter().all(|&item| item.letter == c_char));
@@ -592,10 +831,10 @@ mod tests {
         let mut widget = TextWidget::new();
         widget.add_text_box(&twice_chars_per_box, uv_top_left, uv_bottom_right);
         widget.add_text_box(&twice_chars_per_box_plus_one, uv_top_left, uv_bottom_right);
-        let first_capacity = widget.text_boxes[0].capacity;
-        let first_length = widget.text_boxes[0].length;
-        let second_length = widget.text_boxes[1].length;
-        let second_start = widget.text_boxes[1].start_index;
+        let first_capacity = widget.text_boxes[1].capacity;
+        let first_length = widget.text_boxes[1].length;
+        let second_length = widget.text_boxes[2].length;
+        let second_start = widget.text_boxes[2].start_index;
         assert!(widget.inactive_chars[..first_length].iter().all(|&item| item.letter == c_char));
         assert!(widget.inactive_chars[first_length..first_capacity].iter().all(|&item| item.letter == null_char ));
         assert!(widget.inactive_chars[second_start..(second_start + second_length)].iter().all(|&item| item.letter == c_char));
@@ -605,10 +844,10 @@ mod tests {
         let mut widget = TextWidget::new();
         widget.add_text_box(&thrice_chars_per_box_minus_one, uv_top_left, uv_bottom_right);
         widget.add_text_box(&twice_chars_per_box_plus_one, uv_top_left, uv_bottom_right);
-        let first_capacity = widget.text_boxes[0].capacity;
-        let first_length = widget.text_boxes[0].length;
-        let second_length = widget.text_boxes[1].length;
-        let second_start = widget.text_boxes[1].start_index;
+        let first_capacity = widget.text_boxes[1].capacity;
+        let first_length = widget.text_boxes[1].length;
+        let second_length = widget.text_boxes[2].length;
+        let second_start = widget.text_boxes[2].start_index;
         assert!(widget.inactive_chars[..first_length].iter().all(|&item| item.letter == c_char));
         assert!(widget.inactive_chars[first_length..first_capacity].iter().all(|&item| item.letter == null_char ));
         assert!(widget.inactive_chars[second_start..(second_start + second_length)].iter().all(|&item| item.letter == c_char));
@@ -632,16 +871,16 @@ mod tests {
         widget.add_text_box(&twice_chars_per_box_plus_one, uv_top_left, uv_bottom_right);
 
         // First set of chars.
-        let first_capacity = widget.text_boxes[0].capacity;
-        let first_length = widget.text_boxes[0].length;
+        let first_capacity = widget.text_boxes[1].capacity;
+        let first_length = widget.text_boxes[1].length;
         // Second set of chars.
-        let second_capacity = widget.text_boxes[1].capacity;
-        let second_length = widget.text_boxes[1].length;
-        let second_start = widget.text_boxes[1].start_index;
+        let second_capacity = widget.text_boxes[2].capacity;
+        let second_length = widget.text_boxes[2].length;
+        let second_start = widget.text_boxes[2].start_index;
         // Third set of chars.
-        let third_capacity = widget.text_boxes[2].capacity;
-        let third_length = widget.text_boxes[2].length;
-        let third_start = widget.text_boxes[2].start_index;
+        let third_capacity = widget.text_boxes[3].capacity;
+        let third_length = widget.text_boxes[3].length;
+        let third_start = widget.text_boxes[3].start_index;
 
         // Testing first set of chars.
         assert!(widget.inactive_chars[..first_length].iter().all(|&item| item.letter == c_char));
@@ -661,7 +900,7 @@ mod tests {
         // set should all be null_char now, and what WAS in the second char set, should now be in active_chars.
         let mut old_second_chars_set: Vec<CharVertex> = vec![CharVertex::null_char(); third_capacity];
         old_second_chars_set.copy_from_slice(&widget.inactive_chars[third_start..(third_start + third_capacity)]);
-        widget.set_active_text_box(1);
+        widget.set_active_text_box(2);
 
         // inactive_chars got nulled correctly.
         assert!(widget.inactive_chars[second_start..(second_start + second_capacity)].iter().all(|&item| item.letter == null_char));
@@ -691,16 +930,16 @@ mod tests {
         widget.add_text_box(&twice_chars_per_box_plus_one, uv_top_left, uv_bottom_right);
 
         // First set of chars.
-        let first_capacity = widget.text_boxes[0].capacity;
-        let first_length = widget.text_boxes[0].length;
+        let first_capacity = widget.text_boxes[1].capacity;
+        let first_length = widget.text_boxes[1].length;
         // Second set of chars.
-        let second_capacity = widget.text_boxes[1].capacity;
-        let second_length = widget.text_boxes[1].length;
-        let second_start = widget.text_boxes[1].start_index;
+        let second_capacity = widget.text_boxes[2].capacity;
+        let second_length = widget.text_boxes[2].length;
+        let second_start = widget.text_boxes[2].start_index;
         // Third set of chars.
-        let third_capacity = widget.text_boxes[2].capacity;
-        let third_length = widget.text_boxes[2].length;
-        let third_start = widget.text_boxes[2].start_index;
+        let third_capacity = widget.text_boxes[3].capacity;
+        let third_length = widget.text_boxes[3].length;
+        let third_start = widget.text_boxes[3].start_index;
 
         print_chars(&widget);
 
@@ -708,12 +947,10 @@ mod tests {
         // start_index -> start_index + length
         // of the second chars set, to the null_char. So in essence, all the chars in the entire second
         // set should all be null_char now, and what WAS in the second char set, should now be in active_chars.
-        widget.set_active_text_box(1);
-        println!("\n\n");
+        widget.set_active_text_box(2);
         print_chars(&widget);
         
-        widget.set_active_text_box(0);
-        println!("\n\n");
+        widget.set_active_text_box(1);
         print_chars(&widget);
 
 
@@ -738,6 +975,69 @@ mod tests {
         // active chars got set correctly.
         assert!(widget.active_chars[..first_length].iter().all(|&item| item.letter == c_char));
         assert!(widget.active_chars[first_length..].iter().all(|&item| item.letter == null_char ));
+
+    }
+
+
+    #[test]
+    fn adding_slice_to_active() {
+        // This test is going to check, if we set active_chars from a None state, then set it again to something different,
+        // if it will work properly.
+        let uv_top_left = glm::Vec2::new(0.0, 0.0);
+        let uv_bottom_right = glm::Vec2::new(0.0, 0.0);
+
+        // let null_char = CharVertex::null_char().letter;
+        // let c_char = gen_char_vertex('c').letter;
+
+
+        let mut twice_chars_per_box = String::new(); for _ in 0..(TextWidget::CHARS_PER_BOX * 2) { twice_chars_per_box.push('c'); }
+        let mut twice_chars_per_box_plus_one = String::new(); for _ in 0..(TextWidget::CHARS_PER_BOX * 2 + 1) { twice_chars_per_box_plus_one.push('c'); }
+        let mut widget = TextWidget::new();
+        widget.add_text_box(&twice_chars_per_box, uv_top_left, uv_bottom_right);
+        widget.add_text_box(&twice_chars_per_box_plus_one, uv_top_left, uv_bottom_right);
+        widget.add_text_box(&twice_chars_per_box_plus_one, uv_top_left, uv_bottom_right);
+
+        // // First set of chars.
+        // let first_capacity = widget.text_boxes[1].capacity;
+        // let first_length = widget.text_boxes[1].length;
+        // // Second set of chars.
+        // let second_capacity = widget.text_boxes[2].capacity;
+        // let second_length = widget.text_boxes[2].length;
+        // let second_start = widget.text_boxes[2].start_index;
+        // // Third set of chars.
+        // let third_capacity = widget.text_boxes[3].capacity;
+        // let third_length = widget.text_boxes[3].length;
+        // let third_start = widget.text_boxes[3].start_index;
+
+        print_chars(&widget);
+
+        // Setting the active text box, to 1. This should set the the:
+        // start_index -> start_index + length
+        // of the second chars set, to the null_char. So in essence, all the chars in the entire second
+        // set should all be null_char now, and what WAS in the second char set, should now be in active_chars.
+        widget.set_active_text_box(1);
+        print_chars(&widget);
+
+        widget.add_slice_to_active("oh, hi man!");
+        print_chars(&widget);
+
+        widget.add_slice_to_active(" there's more text where that came from!");
+        print_chars(&widget);
+
+        widget.add_slice_to_active("12345678987654");
+        print_chars(&widget);
+
+        widget.set_active_text_box(2);
+        print_chars(&widget);
+
+        widget.set_active_text_box(0);
+        print_chars(&widget);
+
+        widget.set_active_text_box(0);
+        print_chars(&widget);
+
+        widget.set_active_text_box(100);
+        print_chars(&widget);
 
     }
 }
