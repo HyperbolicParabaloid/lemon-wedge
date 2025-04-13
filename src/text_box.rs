@@ -226,7 +226,9 @@ pub struct BoxPosition {
 pub struct Dimensions {
     start_index: usize,
     length: usize,
-    capacity: usize
+    capacity: usize,
+    top_left: glm::Vec2,
+    bottom_right: glm::Vec2
 }
 
 /// This struct is for holding all the Characters in the UI. It's job is essentially to render all the characters in just 2
@@ -253,11 +255,11 @@ impl TextWidget {
         }
     }
 
-    pub fn add_text_box(&mut self, text: &String, uv_top_left: glm::Vec2, uv_bottom_right: glm::Vec2) {
+    pub fn add_text_box(&mut self, text: &String, top_left: glm::Vec2, bottom_right: glm::Vec2) {
         // We're using an "SSBO" to store the general positional data for all of the text-boxes. That means,
         // we need to to assign each char what "Text Box" it's suppoed to be apart of. That's why this is here.
         let ssbo_index = self.text_boxes.len();
-        let dim_x: u32 = (Self::FONT_SIZE / (uv_top_left.x - uv_bottom_right.x)) as u32;
+        let dim_x: u32 = (Self::FONT_SIZE / (top_left.x - bottom_right.x)) as u32;
 
         // Grabbing the "space" where this text_box is going to live in the inactive_chars Vec.
         // Essentially: we start at "start_index", and we have "capacity" as our max chars before we need to resize,
@@ -273,7 +275,7 @@ impl TextWidget {
             * Self::CHARS_PER_BOX;
 
         // Adding in the new Text Box dimension.
-        self.text_boxes.push(Dimensions { start_index, length, capacity });
+        self.text_boxes.push(Dimensions { start_index, length, capacity, top_left, bottom_right });
 
         // Reserving at least enough space for the new chars.
         self.inactive_chars.reserve(
@@ -319,6 +321,57 @@ impl TextWidget {
     }
 
 
+    //
+    pub fn add_slice_to_active(&mut self, text: &str) {
+        if let Some(active_box) = self.active_box {
+            let dimensions = &self.text_boxes[active_box];
+            let old_len = dimensions.length;
+
+            let new_cap = self.capacity_from_length(old_len + text.len());
+
+            let chars_slice = &self.add_chars(text, active_box, new_cap - old_len, self.active_chars[old_len].position);
+            self.active_chars.copy_from_slice(&chars_slice);
+        }
+    }
+
+
+    //
+    fn get_dim_x(&self, ssbo_index: usize) -> u32 {
+        let top_left = &self.text_boxes[ssbo_index].top_left;
+        let bottom_right = &self.text_boxes[ssbo_index].top_left;
+        
+        (Self::FONT_SIZE / (top_left.x - bottom_right.x)) as u32
+    }
+
+
+    fn add_chars(&self, text: &str, ssbo_index: usize, capacity: usize, mut count: f32) -> Vec<CharVertex> {
+        let mut chars_vec = vec![];
+        let dim_x = self.get_dim_x(ssbo_index);
+
+        for c in text.chars() {
+            match c {
+                '\n' => { count += (dim_x - (count as u32 % dim_x)) as f32; }
+                '\t' => {
+                    let tab_change = (count as u32 % dim_x) % (Self::TAB_SIZE + 1);
+                    count += if tab_change == Self::TAB_SIZE { Self::TAB_SIZE as f32 + 1.0 } else { Self::TAB_SIZE as f32 - tab_change as f32 }
+                }
+                ' '..='⌂' => {
+                    chars_vec.push(CharVertex::new(c, ssbo_index, count, &Self::TEXT_COLOR));
+                    count += 1.0;
+                }
+                _ => {}
+            }
+        }
+
+        // Adding in the "null character" buffer characters.
+        for _ in text.len()..capacity {
+            chars_vec.push(CharVertex::null_char());
+        }
+
+        chars_vec
+    }
+
+
     // Gets a new capacity.
     fn capacity_from_length(&self, length: usize) -> usize {
         ( (length / Self::CHARS_PER_BOX)
@@ -344,6 +397,7 @@ impl TextWidget {
         let null_chars_range = vec![CharVertex::null_char(); new_active_dimensions.capacity];
         self.inactive_chars[start..end].copy_from_slice(&null_chars_range);
     }
+
 
     // This function sets the value of a given range with the data in active_chars. 
     fn insert_active_into_inactive(&mut self, active_index: usize) {
