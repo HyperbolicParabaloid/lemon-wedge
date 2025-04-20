@@ -59,6 +59,9 @@ uniform uint cursor_index;
 
 // Calculating the position of each of the characters.
 void main() {
+	// This is for sinking stuff like lowercase g's and y's so they look right.
+
+
 	// vec3 block_position = vec3(-0.8, 0.8, -1.0);
 	// uvec2 block_dimensions = uvec2(32, 32);
 	vec2 block_step_size = vec2(0.05);
@@ -69,9 +72,13 @@ void main() {
 	// vec2 block_step_size = vec2(uvec_steps) / 1000.0 * 0.05;
 	// uvec2 chars = u32_to_two_u16s(positions[aSSBOIndex].char_size);
 
-	// This is for sinking stuff like lowercase g's and y's so they look right.
 	float fraction = (1.f + fract(aIndex) - 0.5) * block_step_size.y;
 	float wholeIndex = aIndex - fract(aIndex);
+
+	if (aColor.w == 0.0 || (block_dimensions.y != 0.0 && wholeIndex >=  block_dimensions.x * block_dimensions.y)) {
+		gl_Position = vec4(1.0, 1.0, 1.0, 0.0);
+		return;
+	}
 
 	// Deltas.
 	float deltaX = block_step_size.x * float(uint(wholeIndex) % block_dimensions.x); //// TESTING ////
