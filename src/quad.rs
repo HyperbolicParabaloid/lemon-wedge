@@ -20,7 +20,7 @@ impl<'a> Quad<'a> {
     }
 
     pub fn init_shader(&mut self, vert_file: &'a str, frag_file: &'a str) -> Result<(), Box<dyn std::error::Error>> {
-        self.shader_program = Some(Shader::try_new(vert_file, frag_file)?);
+        self.shader_program = Some(Shader::try_new(vert_file, frag_file, None)?);
         Ok(())
     }
 

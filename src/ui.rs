@@ -309,11 +309,11 @@ impl<'a> UI<'a> {
         if let Some(shader_program) = &self.shader_program {
             shader_program.delete();
         }
-        self.shader_program = Some(Shader::try_new(vert_file, frag_file)?);
+        self.shader_program = Some(Shader::try_new(vert_file, frag_file, None)?);
         self.uniforms.clear();
         unsafe {
-            self.uniforms.push(gl::GetUniformLocation(self.shader_program.as_ref().unwrap().get_id(), b"cursor_index\0".as_ptr() as *const _));
-            self.uniforms.push(gl::GetUniformLocation(self.shader_program.as_ref().unwrap().get_id(), b"time\0".as_ptr() as *const _));
+            self.uniforms.push(gl::GetUniformLocation(self.shader_program.as_ref().unwrap().get_id().unwrap(), b"cursor_index\0".as_ptr() as *const _));
+            self.uniforms.push(gl::GetUniformLocation(self.shader_program.as_ref().unwrap().get_id().unwrap(), b"time\0".as_ptr() as *const _));
         }
 
         Ok(())
@@ -327,8 +327,8 @@ impl<'a> UI<'a> {
         }
         self.uniforms.clear();
         unsafe {
-            self.uniforms.push(gl::GetUniformLocation(self.shader_program.as_ref().unwrap().get_id(), b"cursor_index\0".as_ptr() as *const _));
-            self.uniforms.push(gl::GetUniformLocation(self.shader_program.as_ref().unwrap().get_id(), b"time\0".as_ptr() as *const _));
+            self.uniforms.push(gl::GetUniformLocation(self.shader_program.as_ref().unwrap().get_id().unwrap(), b"cursor_index\0".as_ptr() as *const _));
+            self.uniforms.push(gl::GetUniformLocation(self.shader_program.as_ref().unwrap().get_id().unwrap(), b"time\0".as_ptr() as *const _));
         }
         Ok(())
     }

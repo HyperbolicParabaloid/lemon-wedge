@@ -83,11 +83,7 @@ void main() {
 	// sending out the changes.
 	// color = aColor * ((gl_InstanceID == cursor_index && fract(time) < 0.5) ? 0.f : 1.f);
 	color = aColor * ((gl_InstanceID == cursor_index && fract(time) < 0.5) ? 0.f : 1.f);
-	// if (block_dimensions.x == 4 || block_dimensions.y == 4) {
-		// color = vec4(0.0, 0.0, 0.0, 1.0);
-	// } else {
-		// color = aColor;
-	// }
+
 	letter1 = aLetter1;
 	letter2 = aLetter2;
 	quadCoord = vec2( -aPos.x,  aPos.y);

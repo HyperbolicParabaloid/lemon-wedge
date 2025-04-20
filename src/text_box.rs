@@ -184,7 +184,7 @@ pub const QUAD: [f32; 8] = [
 ];
 
 #[allow(unused)]
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct CharVertex {
     letter: [glm::UVec4; 2],
     color: glm::Vec4, /*  */
@@ -220,7 +220,7 @@ impl CharVertex {
 }
 
 // This will be used in the SSBO.
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 #[repr(C)]
 pub struct BoxPosition {
     position: glm::Vec4,// This one should be obvious, just postion in 3D space.
@@ -320,6 +320,14 @@ impl<'a> TextWidget<'a> {
     }
 
 
+    // Debug info.
+    pub fn debug_print(&self) {
+        println!("Active_chars:  \t{:?}", &self.active_chars.iter().map(|c| c.position.floor()).collect::<Vec<_>>());
+        println!("Inactive_chars:\t{:?}", &self.inactive_chars.iter().map(|c| c.position.floor()).collect::<Vec<_>>());
+        println!("\n");
+    }
+
+
     // Renders all the Characters to the window.
     pub fn draw(&self) {
         if let (Some(ia_vao), Some(shader_program)) = (&self.ia_vao, &self.shader_program) {
@@ -335,7 +343,7 @@ impl<'a> TextWidget<'a> {
             eprintln!("You cannot draw an UI element that doesn't have a shader program.\nPerhaps you forgot to do: ui.init_shader(vert_file, frag_file)")
         }
 
-        if let (Some(a_vao), Some(shader_program)) = (&self.a_vao, &self.shader_program) {
+        if let (Some(a_vao), Some(shader_program), Some(_)) = (&self.a_vao, &self.shader_program, &self.active_box) {
             shader_program.activate();
             a_vao.bind();
             unsafe { gl::DrawArraysInstanced(gl::TRIANGLE_STRIP, 0, 4, self.active_chars.len() as gl::types::GLsizei); }
@@ -400,14 +408,11 @@ impl<'a> TextWidget<'a> {
 
     // Creates new SSBO.
     pub fn gen_ssbo(&mut self) {
-        if let Some(ssbo) = &self.ssbo {
-            ssbo.delete();
-        }
         // let test_vec: Vec<f32> = vec![0.1];
         // self.ssbo = Some(SSBO::try_new(&test_vec, gl::DYNAMIC_DRAW));
         if let Some(shader_program) = &self.shader_program {
             shader_program.activate();
-            println!("{:?}", self.positions);
+            // println!("{:?}", self.positions);
             self.ssbo = Some(SSBO::try_new(&self.positions, gl::DYNAMIC_DRAW));
         }
     }
@@ -418,11 +423,11 @@ impl<'a> TextWidget<'a> {
         if let Some(shader_program) = &self.shader_program {
             shader_program.delete();
         }
-        self.shader_program = Some(Shader::try_new(vert_file, frag_file)?);
+        self.shader_program = Some(Shader::try_new(vert_file, frag_file, None)?);
         self.uniforms.clear();
         unsafe {
-            self.uniforms.insert("cursor_index", gl::GetUniformLocation(self.shader_program.as_ref().unwrap().get_id(), b"cursor_index\0".as_ptr() as *const _));
-            self.uniforms.insert("time",  gl::GetUniformLocation(self.shader_program.as_ref().unwrap().get_id(), b"time\0".as_ptr() as *const _));
+            self.uniforms.insert("cursor_index", gl::GetUniformLocation(self.shader_program.as_ref().unwrap().get_id().unwrap(), b"cursor_index\0".as_ptr() as *const _));
+            self.uniforms.insert("time",  gl::GetUniformLocation(self.shader_program.as_ref().unwrap().get_id().unwrap(), b"time\0".as_ptr() as *const _));
         }
 
         Ok(())
@@ -437,8 +442,8 @@ impl<'a> TextWidget<'a> {
         }
         self.uniforms.clear();
         unsafe {
-            self.uniforms.insert("cursor_index", gl::GetUniformLocation(self.shader_program.as_ref().unwrap().get_id(), b"cursor_index\0".as_ptr() as *const _));
-            self.uniforms.insert("time",  gl::GetUniformLocation(self.shader_program.as_ref().unwrap().get_id(), b"time\0".as_ptr() as *const _));
+            self.uniforms.insert("cursor_index", gl::GetUniformLocation(self.shader_program.as_ref().unwrap().get_id().unwrap(), b"cursor_index\0".as_ptr() as *const _));
+            self.uniforms.insert("time",  gl::GetUniformLocation(self.shader_program.as_ref().unwrap().get_id().unwrap(), b"time\0".as_ptr() as *const _));
         }
         Ok(())
     }
@@ -466,7 +471,7 @@ impl<'a> TextWidget<'a> {
 
         // Adding in the new Text Box dimension.
         self.text_boxes.push(Dimensions { start_index, length, capacity, top_left, bottom_right });
-        self.positions.push(BoxPosition::new(glm::Vec4::new(-0.8, 0.8, -1.0, 1.0), [32, 32], [1000, 1000], [0, 0]));
+        self.positions.push(BoxPosition::new(glm::Vec4::new(top_left.x, top_left.y, -1.0, 1.0), [32, 32], [1000, 1000], [0, 0]));
 
         // Reserving at least enough space for the new chars.
         self.inactive_chars.reserve(
@@ -502,14 +507,19 @@ impl<'a> TextWidget<'a> {
         // If you enter an invalid text box index, let's just set it to zero.
         if text_box_index >= self.text_boxes.len() {
             self.set_active_text_box(0);
+            println!("Invalid text box index, setting to 0.");
             return;
         }
 
         match text_box_index {
             0 => {
                 match self.active_box {
-                    None => return,
+                    None => {
+                        println!("The active text box is already 0!");
+                        return
+                    },
                     Some(active_index) => {
+                        println!("Setting the active text box from {} to 0.", active_index);
                         self.insert_active_into_inactive(active_index);
                         self.text_boxes[0] = Dimensions::empty();
                         self.active_box = None;
@@ -522,8 +532,15 @@ impl<'a> TextWidget<'a> {
             text_box_index => {
                 // If we have a previous, active text box, let's make sure to add it's contents back into the inactive_chars vec.
                 if let Some(active_index) = self.active_box {
-                    if active_index == text_box_index { return; }
+                    if active_index == text_box_index {
+                        println!("The active text box is already set to {}!", active_index);
+                        return;
+                    }
+
+                    println!("Setting the active text box from {} to {}.", active_index, text_box_index);
                     self.insert_active_into_inactive(active_index);
+                } else {
+                    println!("Setting the active text box from None to {}.", text_box_index);
                 }
 
                 // Updating the active_box.
@@ -542,18 +559,45 @@ impl<'a> TextWidget<'a> {
             let dimensions = &self.text_boxes[0];
             let old_cap = dimensions.capacity;
             let old_len = dimensions.length;
+            let text_len = text.len();
 
-            let new_cap = self.capacity_from_length(old_len + text.len());
+            let new_cap = self.capacity_from_length(old_len + text_len);
 
-            let chars_slice = &self.add_chars(text, 0, new_cap - old_len, self.active_chars[old_len - 1].position.floor());
+            let chars_slice = &self.add_chars(text, 0, text_len, self.active_chars[old_len - 1].position.floor() + 1.0);
             if old_cap < new_cap {
                 self.active_chars.resize(new_cap, CharVertex::null_char());
             }
-            self.active_chars[old_len..].copy_from_slice(&chars_slice);
+            self.active_chars[old_len..old_len + text_len].copy_from_slice(&chars_slice);
             
-            let new_len = old_len + text.len();
+            let new_len = old_len + text_len;
             self.text_boxes[0].capacity = new_cap;
             self.text_boxes[0].length = new_len;
+
+            self.reset_vao(false);
+        }
+    }
+
+
+    // Replaces the active text box with a new string. This is useful for when you want to replace the entire text box with a new string.
+    pub fn replace_active_with_slice(&mut self, text: &str) {
+        if let Some(_) = self.active_box {
+            let dimensions = &self.text_boxes[0];
+            let old_cap = dimensions.capacity;
+            let text_len = text.len();
+
+            let new_cap = self.capacity_from_length(text_len);
+
+            let chars_slice = &self.add_chars(text, 0, new_cap, 0.0);
+
+            if old_cap != new_cap { self.active_chars.resize(new_cap, CharVertex::null_char()); }
+
+            self.active_chars[..new_cap].copy_from_slice(&chars_slice);
+            
+            let new_len = text_len;
+            self.text_boxes[0].capacity = new_cap;
+            self.text_boxes[0].length = new_len;
+
+            self.reset_vao(false);
         }
     }
 
@@ -569,6 +613,8 @@ impl<'a> TextWidget<'a> {
 
     //
     fn add_chars(&self, text: &str, ssbo_index: usize, capacity: usize, mut count: f32) -> Vec<CharVertex> {
+        println!("[TextWidget] Adding \"{}\" to the text box at index {}, starting at {}.", text, ssbo_index, count);
+
         let mut chars_vec = vec![];
         let dim_x = self.get_dim_x(ssbo_index);
 
@@ -606,6 +652,8 @@ impl<'a> TextWidget<'a> {
 
     // Sets the inactive/active_chars from a given range.
     fn set_new_active(&mut self, text_box_index: usize) {
+        self.positions[0] = self.positions[text_box_index];
+
         let new_active_dimensions = &self.text_boxes[text_box_index];
         let start = new_active_dimensions.start_index;
         let end = start + new_active_dimensions.capacity;
@@ -620,31 +668,41 @@ impl<'a> TextWidget<'a> {
         // Nulling out the old rannge in the inactive_chars.
         let null_chars_range = vec![CharVertex::null_char(); new_active_dimensions.capacity];
         self.inactive_chars[start..end].copy_from_slice(&null_chars_range);
+        
+        self.gen_ssbo();
     }
 
 
     // This function sets the value of a given range with the data in active_chars. 
     fn insert_active_into_inactive(&mut self, active_index: usize) {
         let old_active_dimensions = &self.text_boxes[active_index];
-        let difference = self.active_chars.len() - old_active_dimensions.capacity;
+        let active_len = self.active_chars.len();
+        let old_active_cap = old_active_dimensions.capacity;
 
-        if old_active_dimensions.capacity >= self.active_chars.len() { // We don't need to resize the inactive_chars Vec! :D
-            let start = old_active_dimensions.start_index;
-            let end = start + old_active_dimensions.capacity;
-
-            // Setting the value of the vector in this range to the value of the active_chars Vec.
+        let start = old_active_dimensions.start_index;
+        let end = start + old_active_cap;
+        
+        if old_active_cap == active_len { // We don't need to resize the inactive_chars Vec! :D
+        
+            self.text_boxes[active_index].length = self.text_boxes[0].length;
             self.inactive_chars[start..end].copy_from_slice(&self.active_chars);
-
+       
         } else { // We need to resize the inactive_chars Vec. :(
-            let start = old_active_dimensions.start_index;
-            let end = start + old_active_dimensions.capacity;
             self.fast_slice_replace(start, end);
 
-            // Updating all the starting indices of the other items in the text_boxes in the Vec.
-            for index in active_index..self.text_boxes.len() {
-                self.text_boxes[index].start_index += difference;
-            }
+            self.text_boxes[active_index].capacity = self.text_boxes[0].capacity;
+            self.text_boxes[active_index].length = self.text_boxes[0].length;
 
+            // Updating all the starting indices of the other items in the text_boxes in the Vec.
+            if active_len > old_active_cap {
+                for index in active_index + 1..self.text_boxes.len() {
+                    self.text_boxes[index].start_index += active_len - old_active_cap;
+                }
+            } else {
+                for index in active_index + 1..self.text_boxes.len() {
+                    self.text_boxes[index].start_index -= old_active_cap - active_len;
+                }
+            }
         }        
     }
 
@@ -671,6 +729,7 @@ impl<'a> TextWidget<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    // use super::super::graphics_engine;
 
     const PRINT_RESULTS: bool = false;
 

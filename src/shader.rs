@@ -1,16 +1,41 @@
 use std::{error::Error, ffi::CString, fs, path, ptr::null, time::SystemTime};
 
 pub struct Shader<'a> {
-	id: u32,
+	id: Option<u32>,
 	vert_file: &'a str,
-	frag_file: &'a str
+	frag_file: &'a str,
+	geom_file: Option<&'a str>
 }
 
 impl<'a> Shader<'a> {
-	pub fn try_new(vert_file: &'a str, frag_file: &'a str) -> Result<Self, Box<dyn std::error::Error>> {
-		let vert_contents = CString::new(fs::read_to_string(path::Path::new(vert_file))?)?;
-		let frag_contents = CString::new(fs::read_to_string(path::Path::new(frag_file))?)?;
+	pub fn try_new(vert_file: &'a str, frag_file: &'a str, geom_file: Option<&'a str>) -> Result<Self, Box<dyn std::error::Error>> {
+		// Returning the Shader program.
+		let mut shader = Shader {
+			id: None,
+			vert_file,
+			frag_file,
+			geom_file
+		};
 
+		shader.reload()?;
+		Ok(shader)
+	}
+
+
+	// Reloads the shader program, if it has been changed.
+	pub fn reload(&mut self) -> Result<(), Box<dyn Error>> {
+		match self.id {
+			Some(_) => self.delete(),
+			None => {}
+		}
+
+		let vert_contents = CString::new(fs::read_to_string(path::Path::new(self.vert_file))?)?;
+		let frag_contents = CString::new(fs::read_to_string(path::Path::new(self.frag_file))?)?;
+		let geom_contents = match self.geom_file {
+			None => CString::new("")?,
+			Some(geom_file) => CString::new(fs::read_to_string(path::Path::new(geom_file))?)?
+		};
+		
 		let id;
 
 		unsafe {
@@ -19,87 +44,60 @@ impl<'a> Shader<'a> {
 			gl::CompileShader(vertex_shader);
 			Self::compile_errors(vertex_shader, "VERTEX");
 
-			// Compiling the fragement shader.
 			let fragment_shader = gl::CreateShader(gl::FRAGMENT_SHADER);
 			gl::ShaderSource(fragment_shader, 1, &(frag_contents.as_ptr()) as *const *const gl::types::GLchar, null());
 			gl::CompileShader(fragment_shader);
 			Self::compile_errors(fragment_shader, "FRAGMENT");
 
-			// Creating the "program" a.k.a. the combined shaders.
 			id = gl::CreateProgram();
-			// Attaching the shaders, to this program.
+			
 			gl::AttachShader(id, vertex_shader);
 			gl::AttachShader(id, fragment_shader);
-			// Linking the program, which tethers the shaders together.
-			gl::LinkProgram(id);
 
-			// Self::compile_errors(id, "PROGRAM");
+			if self.geom_file.is_some() {
+				let geometry_shader = gl::CreateShader(gl::GEOMETRY_SHADER);
+				gl::ShaderSource(geometry_shader, 1, &(geom_contents.as_ptr()) as *const *const gl::types::GLchar, null());
+				gl::CompileShader(geometry_shader);
+				Self::compile_errors(geometry_shader, "GEOMETRY");
+			
+				gl::AttachShader(id, geometry_shader);
+				
+				gl::LinkProgram(id);
+				
+				gl::DeleteShader(geometry_shader);
+			} else {
+				gl::LinkProgram(id);
+			}
+
         	let error = gl::GetError();
-        	if error != gl::NO_ERROR {
-        	    panic!("HERE 4 {}", error);
-        	}
+        	if error != gl::NO_ERROR { panic!("HERE 4 {}", error); }
 
-			// Cleaning up the shaders.
 			gl::DeleteShader(vertex_shader);
 			gl::DeleteShader(fragment_shader);
 		}
 
-		// Returning the Shader program.
-		Ok(Shader {
-			id,
-			vert_file,
-			frag_file
-		})
-	}
+		self.id = Some(id);
 
-	pub fn reload(&mut self) -> Result<(), Box<dyn Error>> {
-		self.delete();
-
-		let vert_contents = CString::new(fs::read_to_string(path::Path::new(self.vert_file))?)?;
-		let frag_contents = CString::new(fs::read_to_string(path::Path::new(self.frag_file))?)?;
-
-		unsafe {
-			let vertex_shader = gl::CreateShader(gl::VERTEX_SHADER);
-			gl::ShaderSource(vertex_shader, 1, &(vert_contents.as_ptr()) as *const *const gl::types::GLchar, null());
-			gl::CompileShader(vertex_shader);
-			Self::compile_errors(vertex_shader, "VERTEX");
-
-			// Compiling the fragement shader.
-			let fragment_shader = gl::CreateShader(gl::FRAGMENT_SHADER);
-			gl::ShaderSource(fragment_shader, 1, &(frag_contents.as_ptr()) as *const *const gl::types::GLchar, null());
-			gl::CompileShader(fragment_shader);
-			Self::compile_errors(fragment_shader, "FRAGMENT");
-
-			// Creating the "program" a.k.a. the combined shaders.
-			self.id = gl::CreateProgram();
-			// Attaching the shaders, to this program.
-			gl::AttachShader(self.id, vertex_shader);
-			gl::AttachShader(self.id, fragment_shader);
-			// Linking the program, which tethers the shaders together.
-			gl::LinkProgram(self.id);
-
-			Self::compile_errors(self.id, "PROGRAM");
-
-			// Cleaning up the shaders.
-			gl::DeleteShader(vertex_shader);
-			gl::DeleteShader(fragment_shader);
-		}
 		Ok(())
 	}
 
 	pub fn activate(&self) {
 		unsafe {
-			gl::UseProgram(self.id);
+			if let Some(id) = self.id {
+				gl::UseProgram(id);
+			}
 		}
 	}
 
 	pub fn delete(&self) {
 		unsafe {
-			gl::DeleteProgram(self.id);
+			if let Some(id) = self.id {
+				gl::DeleteProgram(id);
+			}	
 		}
 	}
 
-	pub fn get_id(&self) -> u32 {
+	pub fn get_id(&self) -> Option<u32> {
 		self.id
 	}
 

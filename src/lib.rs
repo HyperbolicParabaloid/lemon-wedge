@@ -1,6 +1,7 @@
 use std::sync::mpsc;
 
 use text_box::TextWidget;
+// use ui::text;
 
 pub mod graphics_engine;
 pub mod text_box;
@@ -59,9 +60,12 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     //     ui::TextBlockPosition::new(glm::Vec4::new(-0.8, -0.5, -1.0, 1.0), [32, 32], [1000, 1000], [0, 0]));
     // ui_elements.reset_vao();
     // ui_elements.gen_ssbo();
+
+
     let mut text_widget = TextWidget::new();
     text_widget.init_shader("src/shaders/ui.vert", "src/shaders/ui.frag")?;
     text_widget.add_text_box(&String::from("Hello, World!"), glm::Vec2::new(-0.5, 0.5), glm::Vec2::new(0.5, -0.5));
+    text_widget.add_text_box(&String::from("Bottom :D"), glm::Vec2::new(-0.5, 0.0), glm::Vec2::new(0.5, -0.5));
     text_widget.init_vaos();
     text_widget.gen_ssbo();
 
@@ -89,13 +93,27 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
 
         if frag_handler.was_modified()? || vert_handler.was_modified()? {
             // ui_elements.reload_shader()?;
+            text_widget.reload_shader()?;
         }
 
-        // // Updating textblock.
-        // match rx.try_recv() {
-        //     Ok(c) => ui_elements.append_textblock(0, c),
-        //     Err(_) => {}
-        // }
+        // Updating textblock.
+        match rx.try_recv() {
+            // Ok(c) => ui_elements.append_textblock(0, c),
+            Ok((19, _)) => text_widget.set_active_text_box(0),
+            Ok((30, _)) => text_widget.set_active_text_box(1),
+            Ok((25, _)) => {
+                text_widget.debug_print();
+            }
+            Ok((23, _)) => {
+                text_widget.replace_active_with_slice("REPLACED!");
+                text_widget.debug_print();
+            }
+            Ok(_) => {
+                text_widget.add_slice_to_active(":D");
+                text_widget.debug_print();
+            },
+            Err(_) => {}
+        }
 
         // ui_elements.draw();
         text_widget.draw();
