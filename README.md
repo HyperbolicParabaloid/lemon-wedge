@@ -8,7 +8,7 @@ Right now I'm side-tracked making a crummy "vi"-esque text editor.
 
 ### 03/26/2025
 
-So ass of today I've flushed out the issues I was having with the SSBO. Turns out the internet lied to me, (kinda). Basic OpenGL std430 packing rules are
+So as of today I've flushed out the issues I was having with the SSBO. Turns out the internet lied to me, (kinda). Basic OpenGL std430 packing rules are
 as follow:
 
     vec4 -> 4   *   4 bytes
@@ -50,3 +50,8 @@ Okay so, practical example.
         // Second 64-CharVertex chunk. 
         '.', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ' 
     ]
+
+### 04/20/2025
+
+Decided to go with a refactor (which now, needs another refactor) but at least now, we have a good system for editing blocks of text and inserting them back into
+the overall list.

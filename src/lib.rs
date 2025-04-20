@@ -69,6 +69,9 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     text_widget.init_vaos();
     text_widget.gen_ssbo();
 
+    let mut q = quad::Quad::new();
+    q.init_shader("src/shaders/background_rounded.vert", "src/shaders/background_rounded.frag", "src/shaders/background_rounded.geom")?;
+    q.reset_vao();
 
 	// Enables the Depth Buffer and does backface culling.
     unsafe {
@@ -117,6 +120,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
 
         // ui_elements.draw();
         text_widget.draw();
+        q.draw();
         window.update();
     }
 

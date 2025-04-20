@@ -3,29 +3,25 @@
 layout (points) in;
 layout (triangle_strip, max_vertices = 4) out;
 
-in DATA
-{
-    vec2 topLeft;
-    vec2 bottomRight;
-    vec4 color;
-} data_in[];
-
 out vec4 oColor;
 
 void main() {
-    vec2 bottomLeft = data_in[0].topLeft;
-    vec2 topRight = data_in[0].topRight;
+    oColor = vec4(1.0);
+
+    vec4 topLeft = vec4(gl_in[0].gl_Position.xy, -1.0, 1.0);
+    vec4 bottomRight = vec4(gl_in[0].gl_Position.zw, -1.0, 1.0);
+    vec4 bottomLeft = vec4(topLeft.x, bottomRight.yzw);
+    vec4 topRight = vec4(bottomRight.x, topLeft.yzw);
     
-    gl_Position = vec4(bottomLeft, -1.0, 1.0);    // 1:bottom-left
+    gl_Position = bottomLeft;
     EmitVertex();   
-    gl_Position = vec4(data_in[0].bottomRight, -1.0, 1.0);    // 1:bottom-left
+    gl_Position = bottomRight;
     EmitVertex();   
-    gl_Position = vec4(data_in[0].topLeft, -1.0, 1.0);    // 1:bottom-left
+    gl_Position = topLeft;
     EmitVertex();   
-    gl_Position = vec4(topRight, -1.0, 1.0);    // 1:bottom-left
-    EmitVertex();   
+    gl_Position = topRight;
+    EmitVertex();
 
     EndPrimitive();
 
-    oColor = data_in[0].color;
 }
