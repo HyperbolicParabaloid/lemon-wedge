@@ -11,7 +11,6 @@ pub mod ssbo;
 pub mod vbo;
 pub mod ebo;
 pub mod shader;
-pub mod quad;
 
 pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     let mut window = graphics_engine::window::Window::new(1080, 720, "Plz");
@@ -48,6 +47,10 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     let mut vert_handler = shader::ShaderHandler::try_new("src/shaders/ui.vert")?;
     let mut frag_handler = shader::ShaderHandler::try_new("src/shaders/ui.frag")?;
 
+    // let mut bg_vert_handler = shader::ShaderHandler::try_new("src/shaders/background_rounded.vert")?;
+    // let mut bg_frag_handler = shader::ShaderHandler::try_new("src/shaders/background_rounded.frag")?;
+    // let mut bg_geom_handler = shader::ShaderHandler::try_new("src/shaders/background_rounded.geom")?;
+
     // let mut ui_elements = ui::UI::new();
     // ui_elements.init_shader("src/shaders/ui.vert", "src/shaders/ui.frag")?;
     // ui_elements.push_textblock(
@@ -64,14 +67,14 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut text_widget = TextWidget::new();
     text_widget.init_shader("src/shaders/ui.vert", "src/shaders/ui.frag")?;
-    text_widget.add_text_box(&String::from("Hello, World!"), glm::Vec2::new(-0.5, 0.5), glm::Vec2::new(0.5, -0.5));
+    text_widget.add_text_box(&String::from("Hello, World!"), glm::Vec2::new(-0.9, 0.7), glm::Vec2::new(-0.1, 0.3));
     text_widget.add_text_box(&String::from("Bottom :D"), glm::Vec2::new(-0.5, 0.0), glm::Vec2::new(0.5, -0.5));
     text_widget.init_vaos();
     text_widget.gen_ssbo();
 
-    let mut q = quad::Quad::new();
-    q.init_shader("src/shaders/background_rounded.vert", "src/shaders/background_rounded.frag", "src/shaders/background_rounded.geom")?;
-    q.reset_vao();
+    // let mut q = text_box::quad::Quad::new();
+    // q.init_shader("src/shaders/background_rounded.vert", "src/shaders/background_rounded.frag", "src/shaders/background_rounded.geom")?;
+    // q.reset_vao();
 
 	// Enables the Depth Buffer and does backface culling.
     unsafe {
@@ -94,10 +97,8 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
 
         }
 
-        if frag_handler.was_modified()? || vert_handler.was_modified()? {
-            // ui_elements.reload_shader()?;
-            text_widget.reload_shader()?;
-        }
+        if frag_handler.was_modified()? || vert_handler.was_modified()? { text_widget.reload_shader()?; }
+        // if bg_frag_handler.was_modified()? || bg_vert_handler.was_modified()? || bg_geom_handler.was_modified()? { q.reload_shader()?; }
 
         // Updating textblock.
         match rx.try_recv() {
@@ -119,8 +120,8 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         // ui_elements.draw();
+        // q.draw();
         text_widget.draw();
-        q.draw();
         window.update();
     }
 

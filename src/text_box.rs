@@ -4,9 +4,11 @@ use crate::shader::Shader;
 use crate::ssbo::SSBO;
 use crate::vao::VAO;
 use crate::vbo::VBO;
+pub mod quad;
 
 use std::os::raw;
 use glfw::ffi;
+use quad::Quad;
 
 // Maping of a char as u8, to a [u32; 8] that represents the Char in memory for the GPU to draw.
 pub const CHAR_MAP: [(f32, [u32; 8]); 100] = [
@@ -281,8 +283,11 @@ pub struct TextWidget<'a> {
     active_chars: Vec<CharVertex>,
     active_box: Option<usize>,
     positions: Vec<BoxPosition>,
+    // backgrounds: Vec<glm::Vec4>,
+    backgrounds: Quad<'a>,
     // Graphics specific items.
     shader_program: Option<Shader<'a>>,
+    // bg_shader_program: Option<Shader<'a>>,
     uniforms: std::collections::HashMap<&'a str, gl::types::GLint>,
     ssbo: Option<SSBO>,
     a_vao: Option<VAO>,
@@ -298,7 +303,7 @@ impl<'a> Drop for TextWidget<'a> {
 }
 impl<'a> TextWidget<'a> {
     const CHARS_PER_BOX: usize = 16;
-    const FONT_SIZE: f32 = 2.0 / 64.0;
+    const FONT_SIZE: f32 = 4.0 / 64.0;
     const TAB_SIZE: u32 = 4;
     const TEXT_COLOR: [f32; 4] = [1.0, 1.0, 1.0, 1.0];
 
@@ -309,8 +314,11 @@ impl<'a> TextWidget<'a> {
             inactive_chars: vec![],
             active_chars: vec![],
             positions: vec![BoxPosition::new(glm::Vec4::new(-0.8, 0.8, -1.0, 1.0), [32, 2], [1000, 1000], [0, 0])],
+            // backgrounds: vec![glm::vec4(0.0, 0.0, 0.0, 0.0)],
+            backgrounds: Quad::new(),
             active_box: None,
             shader_program: None,
+            // bg_shader_program: None,
             uniforms: HashMap::new(),
             ssbo: None,
             a_vao: None,
@@ -332,6 +340,7 @@ impl<'a> TextWidget<'a> {
 
     /// Renders all the Characters to the window.
     pub fn draw(&self) {
+        self.backgrounds.draw();
         if let (Some(ia_vao), Some(shader_program)) = (&self.ia_vao, &self.shader_program) {
             shader_program.activate();
             unsafe {
@@ -356,6 +365,7 @@ impl<'a> TextWidget<'a> {
 
     /// Initalize both active and inactive VAO's.
     pub fn init_vaos(&mut self) {
+        self.backgrounds.reset_vao();
         self.reset_vao(true);
         self.reset_vao(false);
     }
@@ -420,6 +430,7 @@ impl<'a> TextWidget<'a> {
 
     /// Creates a new shader program if one doesn't already exist. If one does exists, it will be deleted and a new one created.
     pub fn init_shader(&mut self, vert_file: &'a str, frag_file: &'a str) -> Result<(), Box<dyn std::error::Error>> {
+        self.backgrounds.init_shader("src/shaders/background_rounded.vert", "src/shaders/background_rounded.frag", "src/shaders/background_rounded.geom")?;
         if let Some(shader_program) = &self.shader_program {
             shader_program.delete();
         }
@@ -452,14 +463,20 @@ impl<'a> TextWidget<'a> {
     /// Adds a new text box of given dimensions and a given contents.
     pub fn add_text_box(&mut self, text: &String, top_left: glm::Vec2, bottom_right: glm::Vec2) {
         let ssbo_index = self.text_boxes.len();
-        let dim_x: u32 = (Self::FONT_SIZE / (top_left.x - bottom_right.x)) as u32;
+        let dim_x: u32 = ((bottom_right.x - top_left.x) / Self::FONT_SIZE) as u32;
+        let dim_y: u16 = ((top_left.y - bottom_right.y) / 1.65 / Self::FONT_SIZE) as u16;
+
+        println!("dim_x/y:\t{}, {}", dim_x, dim_y);
 
         let start_index = self.inactive_chars.len();
         let length = text.len();
         let capacity = self.capacity_from_length(length);
 
         self.text_boxes.push(Dimensions { start_index, length, capacity, top_left, bottom_right });
-        self.positions.push(BoxPosition::new(glm::Vec4::new(top_left.x, top_left.y, -1.0, 1.0), [32, 2], [1000, 1000], [0, 0]));
+        self.positions.push(BoxPosition::new(glm::Vec4::new(top_left.x, top_left.y, -1.0, 1.0), [dim_x as u16, dim_y], [1000, 1000], [0, 0]));
+        // self.backgrounds.push(glm::vec4(top_left.x, top_left.y, bottom_right.x, bottom_right.y));
+        self.backgrounds.add_bg(top_left, bottom_right);
+        self.backgrounds.reset_vao();
 
         self.inactive_chars.reserve(start_index + capacity);
 

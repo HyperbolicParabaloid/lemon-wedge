@@ -64,7 +64,7 @@ void main() {
 
 	// vec3 block_position = vec3(-0.8, 0.8, -1.0);
 	// uvec2 block_dimensions = uvec2(32, 32);
-	vec2 block_step_size = vec2(0.05);
+	vec2 block_step_size = vec2(4.0 / 64.0);
 
 	vec3 block_position = positions[aSSBOIndex].position.xyz;
 	uvec2 block_dimensions = u32_to_two_u16s(positions[aSSBOIndex].dimensions);
@@ -85,7 +85,7 @@ void main() {
 	float deltaY = fraction + block_step_size.y * floor(wholeIndex / float(block_dimensions.x));// * 2.0; //// TESTING ////
 	
 	// Setting the position.
-	gl_Position = vec4(aPos.x * block_step_size.x + block_position.x + deltaX, aPos.y * block_step_size.y + block_position.y - deltaY * 1.65f + fraction, -1.0, 1.f);
+	gl_Position = vec4(aPos.x * block_step_size.x + block_position.x + deltaX + block_step_size.x, aPos.y * block_step_size.y + block_position.y - deltaY * 1.65f + fraction - block_step_size.y, -1.0, 1.f);
 
 	// sending out the changes.
 	// color = aColor * ((gl_InstanceID == cursor_index && fract(time) < 0.5) ? 0.f : 1.f);

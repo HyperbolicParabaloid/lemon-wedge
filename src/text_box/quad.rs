@@ -1,26 +1,33 @@
 use crate::{shader::Shader, vao::VAO, vbo::VBO};
 
-pub const QUAD: [f32; 8] = [
-    -1.0, -1.0,
-     1.0, -1.0,
-    -1.0,  1.0,
-     1.0,  1.0
-];
-
 pub struct Quad<'a> {
+    positions: Vec<glm::Vec4>,
     shader_program: Option<Shader<'a>>,
     vao: Option<VAO>
 }
 impl<'a> Quad<'a> {
     pub fn new() -> Quad<'a> {
         Self {
+            positions: vec![],
             shader_program: None,
             vao: None,
         }
     }
 
+    pub fn add_bg(&mut self, top_left: glm::Vec2, bottom_right: glm::Vec2) {
+        self.positions.push(glm::vec4(top_left.x, top_left.y, bottom_right.x, bottom_right.y));
+        self.reset_vao();
+    }
+
     pub fn init_shader(&mut self, vert_file: &'a str, frag_file: &'a str, geom_file: &'a str) -> Result<(), Box<dyn std::error::Error>> {
         self.shader_program = Some(Shader::try_new(vert_file, frag_file, Some(geom_file))?);
+        Ok(())
+    }
+
+    pub fn reload_shader(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        if let Some(shader_program) = &mut self.shader_program {
+            shader_program.reload()?;
+        }
         Ok(())
     }
 
@@ -29,9 +36,7 @@ impl<'a> Quad<'a> {
             shader_program.activate();
             vao.bind();
 
-            let data = vec![glm::vec4(-0.5, 0.5, 0.5, -0.5)];
-
-            let vbo = VBO::try_new(&data, gl::STATIC_DRAW);
+            let vbo = VBO::try_new(&self.positions, gl::STATIC_DRAW);
             /* topLeft      : vec2 */ vao.link_attrib( &vbo, 0, 4, gl::FLOAT, size_of::<glm::Vec4>() as gl::types::GLsizei, 0 as *const std::os::raw::c_void);
 
             vao.unbind();
@@ -54,8 +59,7 @@ impl<'a> Quad<'a> {
         if let (Some(vao), Some(shader_program)) = (&self.vao, &self.shader_program) {
             shader_program.activate();
             vao.bind();
-	        // unsafe { gl::DrawElementsInstanced(gl::TRIANGLE_STRIP, 4, gl::UNSIGNED_INT, std::ptr::null(), 10); }
-	        unsafe { gl::DrawArrays(gl::POINTS, 0, 2); }
+	        unsafe { gl::DrawArrays(gl::POINTS, 0, self.positions.len() as i32); }
             vao.unbind();
         } else {
             eprintln!("You cannot draw an Quad element that doesn't have a shader program.\nPerhaps you forgot to do: ui.init_shader(vert_file, frag_file)")
